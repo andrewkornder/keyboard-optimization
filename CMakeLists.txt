@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.28)
-project(untitled CUDA)
+project(keyboard CUDA)
 
 set(CMAKE_CUDA_STANDARD 17)
 
@@ -48,7 +48,6 @@ function(CREATE_ name)
     set_target_properties(${name} PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 
     message("[${name}] defining: ${define}")
-    add_dependencies(grp ${name})
 endfunction()
 
 function(CREATE_DD name metric)
@@ -56,11 +55,6 @@ function(CREATE_DD name metric)
     CREATE_("${name}-ddup" ${metric} REMOVE_DUPLICATES)
 endfunction()
 
-add_custom_target(grp)
-CREATE_DD(dist METRIC_DIST)
-CREATE_DD(okp METRIC_OKP)
-CREATE_DD(carpalx METRIC_CARPALX)
-
-
-#set(CMAKE_CUDA_FLAGS "--use_fast_math --restrict -Xcompiler=\"/O2 /fp:fast /Qpar\"")
-set(CMAKE_CUDA_FLAGS -lineinfo)
+CREATE_DD(metric-dist METRIC_DIST)
+CREATE_DD(metric-okp METRIC_OKP)
+CREATE_DD(metriccarpalx METRIC_CARPALX)

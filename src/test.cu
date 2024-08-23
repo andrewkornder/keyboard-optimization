@@ -1,6 +1,7 @@
 #include <lib/def.cuh>
 #include <lib/text.cuh>
 #include <common.cuh>
+#include <iostream>
 #include <metric.cuh>
 #include <vector>
 
@@ -25,7 +26,7 @@ void show(const std::string &string, const stats &out) {
 
 
 class TestGroup {
-    std::vector<const char*> names;
+    std::vector<std::string> names;
     std::vector<stats> scores;
 
 public:
@@ -36,7 +37,7 @@ public:
         }
     }
 
-    void add(const char* name, const char* kb) {
+    void add(const std::string &name, const char* kb) {
         names.push_back(name);
         scores.push_back(test(kb));
     }
@@ -96,18 +97,10 @@ TestGroup testNew_() {
     );
     return t;
 }
-void testNew() {
-    testNew_().print();
-}
 
-void testQWERTY() {
+void test(const std::string &name, const char* keyboard) {
     TestGroup t;
-    TEST_(qwerty,
-        "1234567890"
-        "qwertyuiop"
-        "asdfghjkl;"
-        "zxcvbnm,./"
-    )
+    t.add(name, keyboard);
     t.print();
 }
 
@@ -170,11 +163,46 @@ TestGroup testOther_() {
     // )
     return t;
 }
-void testOther() {
-    testOther_().print();
-}
 void testAll() {
     TestGroup t = testNew_();
     t.combine(testOther_());
     t.print();
+}
+
+void testUser() {
+    char valid[2 * KEYS + 2] = {};
+    memcpy(valid,            KEYS_LOWER, sizeof(KEYS_LOWER));
+    memcpy(valid + KEYS + 1, KEYS_UPPER, sizeof(KEYS_UPPER));
+    valid[KEYS] = '\n';
+    printf("To test a keyboard, enter a string of text with exactly %d letters included in"
+           "the following string:\n%s\nTo exit the testing loop, enter \"stop\"."
+           , KEYS, valid);
+    while (true) {
+        char keyboard[KEYS];
+        int seen = 0;
+
+        printf("Enter a keyboard or \"stop\"");
+        while (seen != KEYS) {
+            char buffer[1024];
+            std::cin.getline(buffer, 1024);
+            if (buffer == "stop") {
+                printf("Exiting.\n");
+                goto exit;
+            }
+            for (int i = 0; buffer[i] != '\0'; ++i) {
+                if (const int pos = letterUtils.positionOf(buffer[i]); pos != -1) {
+                    if (seen < KEYS) keyboard[pos] = seen++;
+                    else seen++;
+                }
+            }
+            if (seen > KEYS) {
+                printf("Too many keys found. Expected %d, found at least %d.\n", KEYS, seen);
+            }
+        }
+
+        printf("Your keyboard:\n");
+        printArrQ(keyboard);
+        test("result", keyboard);
+    }
+    exit:
 }

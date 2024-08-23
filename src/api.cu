@@ -1,8 +1,9 @@
+#include <set>
 #include <filesystem>
-#include <md5.cuh>
-#include <text.cuh>
-#include <metric.cuh>
 
+#include <metric.cuh>
+#include <text.cuh>
+#include <md5.cuh>
 #include "test.cuh"
 #include "record.cuh"
 #include "general.cuh"
@@ -74,6 +75,7 @@ private:
             return false;
         }
 
+        seen.insert(key);
         if (key == "movable") {
             std::vector<int> lmov;
             lmov.reserve(KEYS);
@@ -89,14 +91,14 @@ private:
                     arr[i] = lmov[i];
                 }
                 cudaMemcpyToSymbol(movable, arr, sizeof(arr), 0, cudaMemcpyHostToDevice);
-                hasSetMovable = true;
             } else {
+                seen.extract(key);
                 printf("Movable mask is the wrong size.\nExpected: %d\nFound: %lld.\n", KEYS, lmov.size());
             }
         } else if (key == "size") {
-            size.pop = roundToPower(parseNum(value));
+            size.pop = 1 << ceilLog2(parseNum(value));
         } else if (key == "survivors") {
-            size.surviving = roundToPower(parseNum(value));
+            size.surviving = 1 << ceilLog2(parseNum(value));
         } else if (key == "cache") {
             cacheDirectory = value;
         } else if (key == "generations") {
@@ -111,7 +113,6 @@ private:
             } else {
                 SEED = parseNum(value);
             }
-            hasSetSeed = true;
         } else if (key == "output") {
             Record::output = value;
         } else if (key == "corpus") {
@@ -120,17 +121,21 @@ private:
             exportTables = value;
         } else {
             printf("Unknown key: '%s'\n", key.c_str());
+            seen.extract(key);
             return false;
         }
         return true;
     }
 
+    std::set<std::string> seen{};
+
     std::filesystem::path exportTables;
     std::filesystem::path corpus;
-    bool hasSetMovable = false;
-    bool hasSetSeed = false;
     std::vector<std::string> textExtensions{};
 
+    bool configured(const char* key) {
+        return seen.find(key) != seen.end();
+    }
 public:
     explicit Config(const char* path) {
         std::ifstream cnf(path);
@@ -150,8 +155,14 @@ public:
             cnf.seekg(-1, std::ifstream::cur);
         }
 
-        if (corpus.empty()) {
-            printf("Required field 'corpus' not found.\n");
+        bool invalid = false;
+        for (const char* required : {"corpus", "output", "size", "rounds"}) {
+            if (!configured(required)) {
+                printf("Required field `%s` not found", required);
+                invalid = true;
+            }
+        }
+        if (invalid) {
             exit(1);
         }
 
@@ -160,7 +171,7 @@ public:
             create_directory(cacheDirectory);
         }
 
-        if (!hasSetMovable) {
+        if (configured("movable")) {
             bool lmov[KEYS];
             memset(lmov, true, KEYS);
             cudaMemcpyToSymbol(movable, lmov, sizeof(lmov), 0, cudaMemcpyHostToDevice);
@@ -175,10 +186,14 @@ public:
             }
         }
 
+        if (configured("size") && !configured("surviving")) {
+            size.surviving = 1 << (ceilLog2(size.pop) - 1) / 2;
+        }
+
         const std::shared_ptr text = initText(corpus);
         const mtype* metric = precomputeMetric(text);
 
-        if (!hasSetSeed) {
+        if (!configured("seed")) {
             MD5 seed;
             seed.update((uint64_t) time(nullptr));
             seed.update((uint64_t) text.get());
@@ -247,9 +262,9 @@ public:
 
     struct {
         pop_t pop = 1 << 22;
-        pop_t surviving = 1 << 10;
+        pop_t surviving = 0;
     } size;
-    int generations = 40;
+    int generations = 30;
     int rounds = 1000;
 };
 
@@ -280,9 +295,11 @@ enum class Mode {
     Perf = 1,
     Lock = 2,
     Evolve = 4,
-    TestNew = 8, TestOther = 16, TestAll = 32,
-    Random = 64, QWERTY = 128,
-    Help = 256,
+    TestAll = 8,
+    TestUser = 16,
+    Random = 32,
+    QWERTY = 64,
+    Help = 128,
 
     None = 0,
 };
@@ -304,8 +321,7 @@ class ArgParser {
         if (word == "perf"       ) return Mode::Perf;
         if (word == "lock"       ) return Mode::Lock;
         if (word == "evolve"     ) return Mode::Evolve;
-        if (word == "test-new"   ) return Mode::TestNew;
-        if (word == "test-common") return Mode::TestOther;
+        if (word == "test"       ) return Mode::TestUser;
         if (word == "test-all"   ) return Mode::TestAll;
         if (word == "rand"       ) return Mode::Random;
         if (word == "qwerty"     ) return Mode::QWERTY;
@@ -363,22 +379,24 @@ void run(const Config &cnf, const ArgParser &args) {
     population group(P, K);
 
     for (const auto [mode, repetitions]: args.modes) {
-        for (int i = 0; i < repetitions; ++i) {
+        for (int rep = 0; rep < repetitions; ++rep) {
             switch (mode) {
-                case Mode::TestNew: {
-                    testNew();
-                    break;
-                }
-                case Mode::TestOther: {
-                    testOther();
-                    break;
-                }
                 case Mode::TestAll: {
                     testAll();
                     break;
                 }
+                case Mode::TestUser: {
+                    testUser();
+                    break;
+                }
                 case Mode::QWERTY: {
-                    testQWERTY();
+                    constexpr char qwerty[] {
+                        "1234567890"
+                        "qwertyuiop"
+                        "asdfghjkl;"
+                        "zxcvbnm,./"
+                    };
+                    test("qwerty", qwerty);
                     break;
                 }
                 case Mode::Perf: {
@@ -426,33 +444,50 @@ void run(const Config &cnf, const ArgParser &args) {
 
 
 void printHelpMessage() {
-    printf("Valid modes are:\n");
-    printf(" - \"help\": show this message\n");
-    printf(" - \"perf\": profile functions in the code\n");
-    printf(" - \"rand\": compute the average score of a random keyboard\n");
-    printf(" - \"qwerty\": compute the score of QWERTY\n");
-    printf(" - \"evolve\": evolve a new keyboard\n");
-    printf(" - \"lock\": compute the cost of leaving each single key in its place\n");
-    printf(" - \"test-new\": test each new keyboard\n");
-    printf(" - \"test-common\": test a few alternative keyboards and QWERTY)\n");
-    printf(" - \"test-all\": run both other testing suites\n");
-    printf("Any mode can be repeated multiple times by following it with a number (e.g. \"rand 100\" runs \"rand\" 100 times)\n");
-    printf("\n");
-    printf("Configurable settings include:\n");
-    printf(" - \"size\": how many keyboards per generation.\n");
-    printf(" - \"survivors\": how many of those keyboards are used to create the next generation.\n");
-    printf(" - \"cache\": a directory to place cached corpora in. if not included, turns off caching.\n");
-    printf(" - \"generations\": how many generations to run until finishing the evolution.\n");
-    printf(" - \"plateauLength\": after this many generations without improvement, stop evolving.\n");
-    printf(" - \"rounds\": when using the \"evolve\" mode, decides how many keyboards to generate.\n");
-    printf(" - \"output\": when using the \"evolve\" mode, decides where to put generated keyboard files.\n");
-    printf(" - \"seed\": the seed which drives the pRNG of the program. if not included, it is random. (can be written in hex)\n");
-    printf(" - \"exportTables\": if provided, creates two files with the corpus and metric used.\n");
-    printf(" - \"corpus\": a folder to read text from. all files and subfolders will be read and\n");
-    printf("               used to train the keyboards.\n");
-    printf(" - \"movable\": which keys are allowed to be modified on the QWERTY keyboard.\n");
-    printf("                this should be 30 ones or zeros (1 = movable, 0 = left in place).\n");
-    printf("\n");
+    constexpr char message[] = R"""(
+Configuration
+-----
+Valid fields are
+ - `size` (required, >512): how many keyboards per generation.
+ - `survivors` (default = sqrt(0.5 * size)): how many of those keyboards are used to create the next generation.
+ - `cache`: a directory to place cached corpora in. if not included, turns off caching.
+ - `generations` (default = 30): how many generations to run until finishing the evolution.
+ - `plateauLength` (default = 2): after this many generations without improvement, stop evolving.
+ - `rounds` (required): when using the `evolve` mode, decides how many keyboards to generate.
+ - `output` (default = "./output"): when using the `evolve` mode, decides where to put generated keyboard files.
+ - `seed` (default = random): the seed which drives the pRNG of the program (can be written in hex).
+ - `exportTables`: if provided, creates two files in this directory with the corpus and metric used.
+ - `corpus` (required): a folder to read text from. all files and subfolders will be read as text and
+               used to train the keyboards.
+ - `movable` (default = all movable): which keys are allowed to be modified on the QWERTY keyboard.
+                this should be 30 ones or zeros (1 = movable, 0 = left in place).
+
+Of these 10 fields, only `corpus`, `size`, `rounds`, and `output` must be provided.
+The fields `size` and `surviving` will both get rounded up to the nearest power of two.
+
+USAGE
+-----
+The first argument to the executable must be the path to your configuration file.
+Any other arguments will be treated as modes to run.
+
+There are 8 possibles modes:
+ - `help`: show the possible modes/configurable fields
+ - `perf`: profile various functions in the code (mostly here for debugging reasons)
+ - `rand`: compute the average score of a random keyboard
+ - `qwerty`: compute the score of the QWERTY layout
+ - `evolve`: evolve new keyboards and place them in the configured output directory
+ - `lock`: compute the cost of leaving each single key in its place
+ - `test`: test user keyboards given through stdin
+ - `test-common`: test a few alternative keyboards and QWERTY
+
+Any mode can be repeated multiple times by following it with a number (e.g. "rand 100" runs "rand" 100 times).
+For example:
+`dist.exe configuration.txt qwerty rand 100` will do the following:
+ 1. Load the configuration from `configuration.txt`
+ 2. Print the score for QWERTY.
+ 3. Print the average score of `size` random keyboards 100 times.
+)""";
+    printf(message + 1);
 }
 
 

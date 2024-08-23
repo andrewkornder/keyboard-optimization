@@ -6,15 +6,13 @@
 #include <string>
 
 
-constexpr uint64_t roundToPower(uint64_t x) {
-    if (x == 0 || (x & x - 1) == 0) return x;
-
-    int z = 0;
-    while (x > 0) {
+constexpr uint64_t ceilLog2(uint64_t x) {
+    int z = (x & x - 1) != 0;
+    while (x > 1) {
         x >>= 1;
         ++z;
     }
-    return 1 << z;
+    return z;
 }
 
 inline constexpr char KEYS_LOWER[] = {
@@ -31,7 +29,8 @@ inline constexpr char KEYS_UPPER[] = {
 };
 constexpr uint32_t KEYS = std::size(KEYS_LOWER);
 constexpr uint32_t KEYS2 = KEYS * KEYS;
-constexpr uint32_t ALIGNED = roundToPower(KEYS);
+constexpr uint32_t ALIGNED = 1 << ceilLog2(KEYS);
+constexpr uint32_t y = 1 << ceilLog2(4);
 
 #ifdef METRIC_CARPALX
 constexpr uint32_t textWindow = 3;

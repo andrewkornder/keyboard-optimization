@@ -1,9 +1,8 @@
 #ifndef TEST_CUH
 #define TEST_CUH
 
-void testQWERTY();
-void testNew();
-void testOther();
+void test(const std::string &name, const char* keyboard);
 void testAll();
+void testUser();
 
 #endif //TEST_CUH

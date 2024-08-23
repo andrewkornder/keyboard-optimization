@@ -1,0 +1,9 @@
+.idea
+cached
+*.chc
+resources
+cmake-*
+*.exe
+*.ipynb
+*.py
+.ipynb_checkpoints

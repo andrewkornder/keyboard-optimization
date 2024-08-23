@@ -1,74 +1,55 @@
-// ReSharper disable CppDFAUnreachableCode
-// ReSharper disable CppDFAConstantConditions
-// ReSharper disable CppDFAConstantFunctionResult
-#include <fstream>
-
 #include "text.cuh"
-
-#include <sstream>
 #include <filesystem>
+#include <md5.cuh>
+#include <unordered_map>
 
 
-void mapKeys(const char* arr, char* out) {
-    for (int i = 0; i < KEYS; ++i) {
-        out[letterUtils.keyboardPosition[arr[i]]] = i;
-    }
+typedef std::filesystem::path path_t;
+typedef std::unordered_map<uint64_t, count_t> Counter;
+
+std::string getHashedFile(MD5 hash) {
+    const path_t p = cacheDirectory / hash.hex();
+    return p.string();
 }
 
-void writeCache(const wchar_t* path, const UnfinishedText &text) {
-    std::ofstream file(path);
 
-    char code[maxTextWindow] = {};
-    bool first = true;
-    for (int i = 0; i < text.N; ++i) {
-        if (text.ngrams[i] == 0) continue;
+constexpr uint64_t loadDimension = 3;
+constexpr uint64_t loadBase = 1 << 16;
 
-        if (!first) file << '\n';
-        first = false;
-        letterUtils.getCharsAtIndex<maxTextWindow, letterUtils.totalPrintable>(i, code);
-        for (int j = 0; j < maxTextWindow; ++j) {
-            file << (code[j] == -1 ? ' ' : letterUtils.codeToPrintable[code[j]]);
-        }
-        file << '|' << text.ngrams[i];
-    }
+std::string getHashedFile(const path_t &path) {
+    MD5 hash;
+    hash.update(path.string());
+    // shitty mistake causes me to subtract one instead of reloading all text
+    hash.update((char) (loadDimension - 1));
+    return getHashedFile(hash);
 }
 
-void saveToCache(const wchar_t* path, const UnfinishedText &t) {
-    if (!cachedText) return;
+std::string getHashedFile(const path_t &root, std::vector<path_t> paths) {
+    MD5 hash;
+    hash.update(root.string()).update(loadDimension);
 
-    std::wstringstream stream;
-    stream << cacheDirectory << clock() << time(nullptr) << ".textc";
-
-    const std::wstring out = stream.str();
-    writeCache(out.c_str(), t);
-
-    std::wofstream cache(cachedIndexFile, std::ofstream::out | std::ofstream::app);
-    if (!cache.is_open()) {
-        printf("Failed to save to cache\n");
-        return;
+    std::sort(paths.begin(), paths.end());
+    for (auto &path : paths) {
+        hash.update(path.string());
     }
-
-    cache << path << '|';
-    cache << out << '\n';
-    cache.flush();
-    cache.close();
+    return getHashedFile(hash);
 }
 
 class BufferedFile {
-    constexpr static int size = 1 << 25;
-    std::ifstream file;
-    char* buffer;
+    constexpr static int size = 32ull << 20;
+    std::wifstream file;
+    wchar_t* buffer;
     int index = 0;
     int has = 0;
 
 public:
-    BufferedFile(const wchar_t* path, const int mode) : file(path, mode) {
-        buffer = new char[size];
+    explicit BufferedFile(const std::string &path, const int mode = std::wifstream::in) : file(path, mode) {
+        buffer = new wchar_t[size];
     }
     ~BufferedFile() { delete buffer; }
 
-    char get() {
-        if (eof()) return -1;
+    wchar_t get() {
+        if (eof()) return (wchar_t) -1;
 
         if (index == has) {
             file.read(buffer, size);
@@ -82,228 +63,152 @@ public:
     }
 };
 
+void saveCache(const std::string &path, const Counter &counts);
+void loadNewText(const std::string &saveTo, const std::string &readFrom, Counter &output) {
+    Counter counter;
+    counter.reserve(500'000);
 
-void loadText(const wchar_t* path, const UnfinishedText &out) {
-    int time = clock();
+    constexpr uint64_t N = ipow(loadBase, loadDimension);
 
-    BufferedFile file(path, std::ifstream::in | std::ifstream::binary);
-
-    const UnfinishedText text;
-    count_t code = 0;
+    BufferedFile file(readFrom);
 
     int pastEnd = 0;
-    while (true) {
-        if (file.eof()) {
-            if (++pastEnd == maxTextWindow) break;
+    uint64_t code = 0;
+    while (!file.eof() || ++pastEnd < loadDimension) {
+        code = file.get() | (code << sizeof(wchar_t) * 8);
+        if constexpr (N != 0) {
+            code = code % N;
         }
-
-        const unsigned char q = file.get();
-        const int c = 1 + letterUtils.printableToCode[q];
-        code = (c + code * letterUtils.totalPrintable) % text.N;
-
-        ++text.ngrams[code];
+        ++counter[code];
     }
 
-    count_t total = 0;
-    for (int i = 0; i < text.N; ++i) {
-        out.ngrams[i] += text.ngrams[i];
-        total += text.ngrams[i];
+    saveCache(saveTo, counter);
+    for (const auto & [key, value] : counter) {
+        output[key] += value;
     }
-
-    time = clock() - time;
-    printf("\rLoaded %s characters of training data in %s ms. (%s MB/s)\n", F3(total), F3(time),
-        F3(CLOCKS_PER_SEC * total / (1024. * 1024. * time)));
-
-    saveToCache(path, text);
-
-    out.ngrams[0] -= textOverlap;
-    // out.count -= textOverlap;
 }
 
-bool compareString(const wchar_t* a, const wchar_t* b) {
-    const std::wstring x(a);
-    const std::wstring y(b);
-    return x.compare(y) == 0;
-}
+void saveCache(const std::string &path, const Counter &counts) {
+    std::ofstream file(path);
 
-bool inCache(const wchar_t* path, wchar_t* buf) {
-    if (!cachedText) return false;
+    std::vector<uint64_t> values;
+    values.reserve(counts.size());
 
-    std::wifstream file(cachedIndexFile, std::ifstream::in);
-    if (!file.is_open()) {
-        printf("Could not open cache file.\n");
-        return false;
+    for (const auto& p : counts) {
+        values.push_back(p.first);
     }
-    while (!file.eof()) {
-        wchar_t temp[256];
 
-        file.get(temp, 256, '|');
-        file.get();
-        file.get(buf, 256, '\n');
-        file.get();
+    std::sort(values.begin(), values.end(), [&counts](const uint64_t a, const uint64_t b) {
+        return counts.at(a) > counts.at(b);
+    });
 
-        if (compareString(temp, path)) {
-            return true;
+    for (const uint64_t key : values) {
+        int letters[loadDimension];
+        letterUtils.getCharsAtIndexUnsigned<loadDimension, loadBase - 1>(key, letters);
+        bool first = true;
+        for (const int q : letters) {
+            if (!first) file << ',';
+            first = false;
+            file << q;
         }
+        file << '|' << counts.at(key) << '\n';
     }
-    return false;
 }
 
-bool loadCache(const UnfinishedText &out, const wchar_t* location) {
-    if (!cachedText) return false;
-
-    std::ifstream file(location, std::ifstream::in);
+bool loadCached(const std::string &path, Counter &counter) {
+    std::ifstream file(path);
     if (!file.is_open()) {
-        printf("Failed to open %ls\n", location);
         return false;
     }
 
-    int time = clock();
-    const UnfinishedText cache;
+    char line[64] = {};
+    file.get(line, 64, '\n');
+    file.seekg(std::ifstream::beg);
+
 
     while (!file.eof()) {
-        char line[256];
-        file.get(line, 256);
+        file.get(line, 64, '\n');
         file.get();
 
-        char code[maxTextWindow];
-        for (int i = 0; i < maxTextWindow; ++i) {
-            code[i] = letterUtils.printableToCode[line[i]];
+        const char* ptr = line;
+        if (*ptr > '9' || *ptr < '0') {
+            break;
         }
-        const int idx = letterUtils.indexOf<maxTextWindow, letterUtils.totalPrintable>(code);
-        cache.ngrams[idx] += atoll(line + maxTextWindow + 1);
-    }
 
-    count_t total = 0;
-    for (int i = 0; i < out.N; ++i) {
-        total += cache.ngrams[i];
-        out.ngrams[i] += cache.ngrams[i];
+        count_t cp[loadDimension + 1] = {};
+        for (int i = 0; i < loadDimension + 1; ++i) {
+            count_t x = 0;
+            while ('0' <= *ptr && *ptr <= '9') {
+                x = 10 * x + (*ptr - '0');
+                ++ptr;
+            }
+            ++ptr;
+            cp[i] = x - (i != loadDimension);
+        }
+        uint64_t code = letterUtils.getIndexAtChars<loadDimension, loadBase - 1>(cp);
+        counter[code] += cp[loadDimension];
     }
-
-    time = clock() - time;
-    printf("Loaded %s characters from cache in %d ms.\n", F3(total), time);
     return true;
 }
 
-bool addText(const std::filesystem::path &path, const UnfinishedText &out) {
-    if (path.extension().string().substr(0, 6) == ".textc") {
-        return loadCache(out, path.c_str());
-    }
-
-    const std::filesystem::path can = weakly_canonical(path);
-    const wchar_t* fp = can.c_str();
-
-    bool cached = false;
-    if (wchar_t cachedLocation[256]; inCache(fp, cachedLocation)) {
-        cached = loadCache(out, cachedLocation);
-    }
-    if (!cached) {
-        loadText(fp, out);
-    }
-    return cached;
-}
-
-void writeText(const UnfinishedText &text) {
-    writeCache(L"text.chc", text);
-}
 
 
-std::unique_ptr<FinishedText<textWindow>> initText(const wchar_t* saveTo, const std::vector<std::filesystem::path> &paths) {
-    UnfinishedText counts;
-    std::unique_ptr<FinishedText<textWindow>> out;
+std::unique_ptr<FinishedText> initText(const path_t &corpus) {
+    std::vector<path_t> corpora;
 
-    if (saveTo != nullptr && saveTo[0] > 0 && std::filesystem::exists(saveTo)) {
-        printf("Loading text from previous run: '%ls'\n", saveTo);
-        loadCache(counts, saveTo);
-        saveTo = nullptr;
-        out = std::make_unique<FinishedText<textWindow>>(counts);
+    if (is_directory(corpus)) {
+        for (const auto &entry : std::filesystem::recursive_directory_iterator(corpus)) {
+            if (!entry.is_directory()) {
+                corpora.push_back(entry.path());
+            }
+        }
+    } else if (exists(corpus)) {
+        corpora.push_back(corpus);
     } else {
-        int cacheHits = 0;
-        int totalAdded = 0;
+        printf("Corpus could not be found: '%ls'.\n", corpus.c_str());
+        exit(1);
+    }
 
-        int nLength = 0;
-        {
-            int n = paths.size();
-            while (n > 0) {
-                nLength++;
-                n /= 10;
+    Counter counts;
+    if (const std::string totalCache = getHashedFile(corpus, corpora) + ".sum"; !loadCached(totalCache, counts)) {
+        for (auto &path : corpora) {
+            const clock_t start = clock();
+            printf("Loading corpus: '%ls'...", path.c_str());
+            if (const std::string singleCache = getHashedFile(path) + ".chc"; !loadCached(singleCache, counts)) {
+                loadNewText(singleCache, path.string(), counts);
             }
+            const clock_t elapsed = clock() - start;
+            printf("\rLoaded corpus '%ls' in %s ms.\n", path.c_str(), F3(elapsed));
         }
+        saveCache(totalCache, counts);
+    }
 
-        for (int idx = 0; idx < paths.size(); idx++) {
-            writeText(counts);
+    count_t* array = new count_t[FinishedText::N]();
 
-            const std::filesystem::path &s = paths[idx];
-            printf("[%*d / %lld] Adding '%ls' to text...\n", nLength, idx + 1, paths.size(),
-                s.c_str());
-            cacheHits += addText(s, counts);
-
-            totalAdded++;
+    for (const auto [key, value] : counts) {
+        int letters[loadDimension];
+        letterUtils.getCharsAtIndexUnsigned<loadDimension, loadBase - 1>(key, letters);
+        constexpr int skip = loadDimension - textWindow;
+        for (int i = skip; i < loadDimension; ++i) {
+            letters[i] = letterUtils.positionOf(letters[i]);
         }
-        out = std::make_unique<FinishedText<textWindow>>(counts);
-        printf("Total files read: %s (%s cached)\n", F3(totalAdded), F3(cacheHits));
-        printf("Total chars read: %s\n", F3(out->count));
+        const uint64_t i = letterUtils.getIndexAtChars<textWindow, KEYS>(letters + skip);
+        array[i] += value;
     }
 
-    writeText(counts);
+    std::unique_ptr text = std::make_unique<FinishedText>(array);
+    delete array;
 
-    if (out->count == 0) {
-        printf("Failed to read any characters of text.\n");
-        exit(2);
-    }
-
-    if (saveTo != nullptr) {
-        printf("Saving text to '%ls'.\n", saveTo);
-        writeCache(saveTo, counts);
-    }
-
-    return out;
+    return text;
 }
 
-std::unique_ptr<FinishedText<textWindow>> initText(const char* file) {
-    std::vector<std::filesystem::path> paths;
-    paths.push_back(file);
-    return initText(nullptr, paths);
-}
 
-std::unique_ptr<FinishedText<textWindow>> initText(const char* root, const std::vector<std::string> &exts) {
-    std::vector<std::filesystem::path> paths;
-    for (const auto & entry : std::filesystem::recursive_directory_iterator(root)) {
-        const std::filesystem::path s = entry.path();
-        std::filesystem::path ext = s.extension();
-
-        for (const std::string &cmp : exts) {
-            if (ext == cmp) {
-                paths.push_back(s);
-                break;
-            }
+void mapKeys(const char* arr, char* out) {
+    for (int i = 0, k = 0; k < KEYS; ++i) {
+        if (const int j = letterUtils.positionOf(arr[i]); j != -1) {
+            out[j] = k++;
         }
     }
-
-    wchar_t saveTo[512] = {};
-    if (cachedText) {
-        wchar_t repl[1024];
-        wchar_t* rp = repl;
-        for (const char* p = root; *p != '\0'; ++rp, ++p) {
-            if (*p == ':' || *p == '/' || *p == '\\') *rp = '_';
-            else *rp = *p;
-        }
-        *rp = '\0';
-
-        std::wstringstream stream;
-
-        stream << cacheDirectory << repl << "{";
-
-        for (int i = 0; i < exts.size(); ++i) {
-            if (i) stream << ',';
-            stream << exts[i].c_str() + 1;
-        }
-        stream << "}x" << paths.size() << '[' << KEYS << "].text" << textWindow << 'c' << sizeof(text_t);
-
-        const std::wstring out = stream.str();
-        memcpy(saveTo, out.c_str(), out.length() * sizeof(wchar_t));
-    }
-    return initText(saveTo, paths);
 }
 
 __host__ __device__ void printArr(const char* arr) {
@@ -321,7 +226,7 @@ __host__ void printArrQ(const char* arr) {
     }
 
     for (int i = 0; i < KEYS; ++i) {
-        printf("%c", QC0[letters[i]]);
+        printf("%c", KEYS_LOWER[letters[i]]);
         if (i % 10 == 9) printf("\n");
     }
 }

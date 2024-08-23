@@ -8,11 +8,11 @@
 
 constexpr int setSize = ALIGNED / sizeof(uint64_t);
 
-
-
 Record::Record(population* g) {
-    std::filesystem::create_directory("output");
-
+    if (!is_directory(output)) {
+        printf("Creating output directory: '%ls'\n", output.c_str());
+        create_directory(output);
+    }
     this->g = g;
 }
 
@@ -89,7 +89,7 @@ void Record::writeKB(std::ofstream &file, const char* positions) {
     }
     file << '\n';
     for (int i = 0; i < KEYS; i++) {
-        file << QC0[letters[i]];
+        file << KEYS_LOWER[letters[i]];
         if (i % 10 == 9) file << '\n';
     }
     file << '\n';
@@ -107,7 +107,7 @@ void writePlot(std::ofstream &file, const std::vector<T> &y, const int size) {
 
 
 void Record::saveAllToFile() const {
-    std::ofstream file("output\\all.gen", std::ofstream::out);
+    std::ofstream file(output / "all.gen", std::ofstream::out);
 
     file << "Total organisms seen: " << snap->size << "\n\n";
 
@@ -135,10 +135,7 @@ void Record::saveAllToFile() const {
 }
 
 void Record::saveToFile(const int i, const state seed, const std::unique_ptr<Snapshot> &result) const {
-    std::ostringstream o;
-    o << "output\\" << i << ".gen";
-
-    std::ofstream file(o.str(), std::ofstream::out);
+    std::ofstream file((output / std::to_string(i)).string() + ".gen", std::ofstream::out);
 
     file << "SEED: " << seed << "\n";
     file << "Run: " << i + 1 << " / " << rounds;
@@ -178,9 +175,7 @@ class Distribution {
 public:
     Distribution() {}
     explicit Distribution(const int index) {
-        std::ostringstream o;
-        o << "output\\" << index << ".dist";
-        file.open(o.str(), std::ofstream::out);
+        file.open((Record::output / std::to_string(index)).string() + ".dist", std::ofstream::out);
     }
 
     void add(population &g, const std::unique_ptr<Snapshot> &snapshot) {
@@ -250,3 +245,4 @@ std::unique_ptr<Snapshot> Record::next(const int i) {
 }
 
 int Record::plateauLength = 2;
+std::filesystem::path Record::output = "output";

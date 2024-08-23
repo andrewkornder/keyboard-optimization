@@ -13,7 +13,7 @@
 </survivors>
 
 <cache>
-YOUR DIRECTORY HERE
+.\cached
 </cache>
 
 <generations>
@@ -28,11 +28,18 @@ YOUR DIRECTORY HERE
 1000
 </rounds>
 
-<seed>
-0x62da66a4cd0525d9
-</seed>
-
 <corpus>
-YOUR FOLDER HERE
-file extensions
+.\resources\text
 </corpus>
+
+<output>
+./output-dist
+</output>
+
+# <exportTables>
+# .\tables
+# </exportTables>
+
+<seed>
+0x78866e9d648e7309
+</seed>

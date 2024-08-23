@@ -21,6 +21,8 @@ struct History {
 class Record {
 public:
     static int plateauLength;
+    static std::filesystem::path output;
+
     explicit Record(population* g);
 
     void get();

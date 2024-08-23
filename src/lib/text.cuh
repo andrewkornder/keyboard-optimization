@@ -1,20 +1,17 @@
-#ifndef TEXT_H
-#define TEXT_H
+#ifndef TEXT_CUH
+#define TEXT_CUH
 
 #include <def.cuh>
 #include <memory>
 #include <fstream>
-#include <vector>
+#include <filesystem>
 
 typedef uint32_t text_t;
 typedef uint64_t count_t;
 
-inline char cachedIndexFile[1024] = R"(K:\data\code\clion\untitled\cached\index)";
-inline char cacheDirectory[1024] = R"(K:\data\code\clion\untitled\cached\)";
-inline bool cachedText = false;
+inline std::filesystem::path cacheDirectory = R"(K:\data\code\clion\untitled\cached\)";
 
-
-__host__ __device__ static constexpr int ipow(const int x, const int p, const int m = 1) {
+__host__ __device__ static constexpr uint64_t ipow(const uint64_t x, const uint64_t p, const uint64_t m = 1) {
     return p > 0 ? ipow(x, p - 1, m * x) : m;
 }
 
@@ -55,45 +52,53 @@ __forceinline__ __host__ __device__ T* sampleAddr(T* arr, const int a, const int
     return &arr[sampleIdx(a, b, c)];
 }
 
-struct LettersClass {
-    // not including space
-    static constexpr int totalPrintable = 94;
-    char keyboardPosition[256] = {};
-    char printableToCode[256] = {};
-    char codeToPrintable[256] = {};
 
+struct LettersClass {
+private:
+    char keyboardPosition[256] = {};
+
+public:
     constexpr LettersClass() noexcept {
         for (int i = 0; i < 256; ++i) {
             keyboardPosition[i] = -1;
-            printableToCode[i] = -1;
-            codeToPrintable[i] = ' ';
-        }
-        for (char c = '!'; c <= '~'; ++c) {
-            printableToCode[c] = c - '!';
-            codeToPrintable[c - '!'] = c;
         }
         for (int i = 0; i < KEYS; ++i) {
-            keyboardPosition[QC0[i]] = i;
-            keyboardPosition[QC1[i]] = i;
+            keyboardPosition[KEYS_LOWER[i]] = i;
+            keyboardPosition[KEYS_UPPER[i]] = i;
         }
     }
 
-    template<int size, int width>
-    static int indexOf(const char code[size]) {
-        int i = 0, m = ipow(width + 1, size - 1);
-        for (int j = 0; j < size; ++j) {
-            i += (1 + code[j]) * m;
-            m /= width + 1;
-        }
-        return i;
+    constexpr char positionOf(const int c) const {
+        if (c > 255) return -1;
+        return keyboardPosition[c];
+    }
+    constexpr char positionOf(const char c) const {
+        return keyboardPosition[c];
     }
 
-    template<int size, int width>
-    static void getCharsAtIndex(int i, char out[size]) {
+    template<int size, int width, typename T>
+    constexpr static void getCharsAtIndex(uint64_t i, T out[size]) {
         for (int j = 0; j < size; ++j) {
-            out[size - j - 1] = i % width - 1;
-            i /= width;
+            out[size - j - 1] = i % (width + 1) - 1;
+            i /= width + 1;
         }
+    }
+
+    template<int size, int width, typename T>
+    constexpr static void getCharsAtIndexUnsigned(uint64_t i, T out[size]) {
+        for (int j = 0; j < size; ++j) {
+            out[size - j - 1] = i % (width + 1);
+            i /= width + 1;
+        }
+    }
+
+    template<int size, int width, typename T>
+    constexpr static uint64_t getIndexAtChars(T out[size]) {
+        uint64_t x = 0;
+        for (int j = 0; j < size; ++j) {
+            x = (width + 1) * x + (1 + out[j]);
+        }
+        return x;
     }
 
     template <int size, int width, typename T>
@@ -109,74 +114,43 @@ struct LettersClass {
 constexpr LettersClass letterUtils;
 
 
-struct UnfinishedText {
-    static constexpr count_t N = ipow(letterUtils.totalPrintable + 1, maxTextWindow);
-
-    UnfinishedText() {
-        ngrams = new count_t[N]();
-    }
-    ~UnfinishedText() { delete[] ngrams; }
-    UnfinishedText(const UnfinishedText &other) = delete;
-
-    count_t* ngrams;
-};
-
-template <int window>
 struct FinishedText {
-    static constexpr int N = ipow(ngramStride, window);
+    constexpr static count_t N = ipow(ngramStride, textWindow);
+    explicit FinishedText(const count_t *counts) : count(0), scaled(0) {
+        cpuArray = new text_t[N];
 
-private:
-    template <typename T, typename Tranform>
-    void moveCounts(const T* arr, Tranform f) {
-        letterUtils.applyOnIndices<maxTextWindow, letterUtils.totalPrintable>([&f, self = cpuArray, other = arr](const int index, const char keys[window]) {
-            char code[window] = {};
-            for (int i = 0; i < window; ++i) {
-                const char remapped = letterUtils.codeToPrintable[keys[i]];
-                code[i] = letterUtils.keyboardPosition[remapped];
-            }
-            self[letterUtils.indexOf<window, KEYS>(code)] = f(other[index]);
-        });
-    }
-
-public:
-    explicit FinishedText(const UnfinishedText &text) : count(0) {
-        cpuArray = new text_t[N]();
-        for (int i = 0; i < text.N; ++i) {
-            count += text.ngrams[i];
+        count_t maxValue = 0;
+        constexpr count_t cap = (text_t) -1;
+        for (int i = 0; i < N; ++i) {
+            maxValue = maxValue > counts[i] ? maxValue : counts[i];
         }
 
-        if constexpr (std::is_integral_v<text_t>) {
-            constexpr text_t maxValue = (text_t) -1;
+        count_t div = maxValue == 0 ? 1 : maxValue / cap + (maxValue % cap != 0);
+        div = div == 0 ? 1 : div;
 
-            count_t max = 0;
-            for (int i = 0; i < N; ++i) {
-                max = max < text.ngrams[i] ? text.ngrams[i] : max;
-            }
-            count_t div = max == 0 ? 1 : (max + maxValue - 1) / maxValue;
-            moveCounts(text.ngrams, [div](const count_t c) { return (text_t) (c / div); });
-        } else {
-            moveCounts(text.ngrams, [count = count](const count_t c) { return (text_t) c / count; });
+        for (int i = 0; i < N; ++i) {
+            const count_t v = counts[i];
+
+            cpuArray[i] = v / div;
+            scaled += v / div;
+            count += v;
         }
 
-        cudaMalloc(&gpuArray, N * sizeof(text_t));
-        cudaMemcpy(gpuArray, cpuArray, N * sizeof(text_t), cudaMemcpyHostToDevice);
+        cudaMalloc(&gpuArray, sizeof(text_t) * N);
+        cudaMemcpy(gpuArray, cpuArray, sizeof(text_t) * N, cudaMemcpyHostToDevice);
     }
-    ~FinishedText() {
-        cudaFree(gpuArray);
-        delete[] cpuArray;
-    }
+
+    FinishedText(FinishedText &&other) = delete;
     FinishedText(const FinishedText &other) = delete;
 
-    count_t count;
-    text_t* cpuArray;
-    text_t* gpuArray;
+    count_t count, scaled;
+    text_t *cpuArray, *gpuArray;
 };
 
-std::unique_ptr<FinishedText<textWindow>> initText(const char*, const std::vector<std::string>&);
-std::unique_ptr<FinishedText<textWindow>> initText(const char*);
+std::unique_ptr<FinishedText> initText(const std::filesystem::path &corpus);
 
 void mapKeys(const char* arr, char* out);
 
 __host__ __device__ void printArr(const char* arr);
 __host__ void printArrQ(const char* arr);
-#endif //TEXT_H
+#endif //TEXT_CUH

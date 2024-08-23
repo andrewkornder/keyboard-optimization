@@ -4,46 +4,6 @@
 #include <text.cuh>
 
 
-#ifdef METRIC_OKP
-struct mtype {
-    short cost = 0;
-    bool sameHand = false;
-    bool sameFinger = false;
-    bool inRoll = false;
-    bool outRoll = false;
-    bool rowChange = false;
-    bool ringJump = false;
-    bool toCenter = false;
-    bool homeJump = false;
-    bool doubleJump = false;
-};
-
-inline std::ostream& operator<<(std::ostream& file, const mtype &m) {
-    file << '{';
-    file << (int) m.cost << ',';
-    file << (int) m.sameHand << ',';
-    file << (int) m.sameFinger << ',';
-    file << (int) m.inRoll << ',';
-    file << (int) m.outRoll << ',';
-    file << (int) m.rowChange << ',';
-    file << (int) m.ringJump << ',';
-    file << (int) m.toCenter << ',';
-    file << (int) m.homeJump << ',';
-    file << (int) m.doubleJump;
-    file << '}';
-    return file;
-}
-#else
-struct mtype {
-    score_t cost;
-};
-
-inline std::ostream& operator<<(std::ostream& file, const mtype &m) {
-    file << '{' << m.cost << '}';
-    return file;
-}
-#endif
-
 
 #define SCALESCORE(s, count) { \
     if constexpr (std::is_integral_v<text_t> && std::is_floating_point_v<score_t>) { \
@@ -69,7 +29,7 @@ struct Metric {
     mtype* gpuArray = nullptr;
 };
 
-std::shared_ptr<FinishedText<textWindow>> sharedText;
+std::shared_ptr<FinishedText> sharedText;
 Metric metric;
 
 
@@ -77,11 +37,11 @@ __global__ LAUNCH_BOUNDS_DEFAULT void scoreGPU(pop_t n, keyboard* population, co
     const text_t* ngrams, const mtype* metric);
 
 void score(const pop_t n, keyboard* population) {
-    const int blocks = n > 1024 ? n / 1024 : 1;
-    scoreGPU<<<blocks, 1024>>>(n, population, sharedText->count, sharedText->gpuArray, metric.gpuArray);
+    const pop_t blocks = n > 1024 ? n / 1024 : 1;
+    scoreGPU<<<blocks, 1024>>>(n, population, sharedText->scaled, sharedText->gpuArray, metric.gpuArray);
 }
 
-void precomputeMetric(const std::shared_ptr<FinishedText<textWindow>>& text) {
+const mtype* precomputeMetric(const std::shared_ptr<FinishedText>& text) {
     sharedText = text;
 
     letterUtils.applyOnIndices<textWindow, KEYS>([](const int index, const char keys[textWindow]) {
@@ -89,6 +49,7 @@ void precomputeMetric(const std::shared_ptr<FinishedText<textWindow>>& text) {
     });
 
     metric.send();
+    return metric.cpuArray;
 }
 
 #ifdef METRIC_DIST
@@ -133,21 +94,24 @@ void Metric::add(const int index, const char keys[2]) const {
         horizontalWeight * (colB - colA + xOffset[rowB] - xOffset[rowA]),
         verticalWeight * (rowB - rowA)
     );
+
     if (log) {
         dst = log1p(dst);
     }
     dst *= weightFinger(fi) * weightFinger(fj);
-    cpuArray[index] = {(score_t) dst};
+    cpuArray[index] = {dst};
 }
 
 
 __host__ __device__ stats score(const char* positions, const count_t count, const text_t* text, const mtype* metric) {
     stats total = {};
+    // printArr(positions);
     for (char x = 0; x < KEYS; x++) {
         const char a = positions[x];
 
         for (char y = 0; y < KEYS; y++) {
             const char b = positions[y];
+            // printf("[%d -> %d] %u x %f\n", x, y, sample(text, x, y), sample(metric, a, b).cost);
             total.score += sample(text, x, y) * sample(metric, a, b).cost;
         }
 
@@ -184,7 +148,7 @@ __global__ LAUNCH_BOUNDS_DEFAULT void scoreGPU(const pop_t n, keyboard* populati
 }
 
 stats score(const char* positions) {
-    return score(positions, sharedText->count, sharedText->cpuArray, metric.cpuArray);
+    return score(positions, sharedText->scaled, sharedText->cpuArray, metric.cpuArray);
 }
 
 #elif defined(METRIC_OKP)
@@ -387,7 +351,7 @@ __global__ LAUNCH_BOUNDS_DEFAULT void scoreGPU(const pop_t n, keyboard* populati
 }
 
 stats score(const char* positions) {
-    return score(positions, sharedText->count, sharedText->cpuArray, metric.cpuArray);
+    return score(positions, sharedText->scaled, sharedText->cpuArray, metric.cpuArray);
 }
 #elif defined(METRIC_CARPALX)
 
@@ -447,7 +411,7 @@ stats score(const char* positions) {
             }
         }
     }
-    SCALESCORE(total, sharedText->count);
+    SCALESCORE(total, sharedText->scaled);
     return total;
 }
 #endif

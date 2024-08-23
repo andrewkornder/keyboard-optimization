@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.28)
-project(keyboard CUDA)
+project(keyboard-optimization CUDA)
 
 set(CMAKE_CUDA_STANDARD 17)
 
@@ -37,6 +37,9 @@ function(CREATE_ name)
         src/lib/text.cuh
         src/lib/metric.cu
         src/lib/metric.cuh
+
+        src/lib/md5.cu
+        src/lib/md5.cuh
     )
     list(SUBLIST ARGV 1 -1 define)
     target_include_directories(${name} PUBLIC
@@ -48,6 +51,7 @@ function(CREATE_ name)
     set_target_properties(${name} PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 
     message("[${name}] defining: ${define}")
+    add_dependencies(compile-all ${name})
 endfunction()
 
 function(CREATE_DD name metric)
@@ -55,6 +59,11 @@ function(CREATE_DD name metric)
     CREATE_("${name}-ddup" ${metric} REMOVE_DUPLICATES)
 endfunction()
 
-CREATE_DD(metric-dist METRIC_DIST)
-CREATE_DD(metric-okp METRIC_OKP)
-CREATE_DD(metriccarpalx METRIC_CARPALX)
+add_custom_target(compile-all)
+CREATE_DD(dist METRIC_DIST)
+CREATE_DD(okp METRIC_OKP)
+CREATE_DD(carpalx METRIC_CARPALX)
+
+
+set(CMAKE_CUDA_FLAGS "--use_fast_math --restrict -Xcompiler=\"/O2 /fp:fast /Qpar\"")
+#set(CMAKE_CUDA_FLAGS -lineinfo)

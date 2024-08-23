@@ -5,15 +5,6 @@
 #include <vector>
 
 
-__global__ void setTest(keyboard* key, char* t) {
-    key->arr = t;
-    key->stats = {};
-}
-
-__global__ void getTest(const keyboard* k, stats* out) {
-    *out = k->stats;
-}
-
 stats test(const char* kb) {
     char t[KEYS];
     mapKeys(kb, t);
@@ -38,6 +29,13 @@ class TestGroup {
     std::vector<stats> scores;
 
 public:
+    void combine(const TestGroup &other) {
+        for (int i = 0; i < other.names.size(); ++i) {
+            names.push_back(other.names[i]);
+            scores.push_back(other.scores[i]);
+        }
+    }
+
     void add(const char* name, const char* kb) {
         names.push_back(name);
         scores.push_back(test(kb));
@@ -69,7 +67,7 @@ public:
 }
 #define TEST_T(name, s) TEST_(test{##name##},s)
 #define TEST_N(name, s) TEST_(name,s)
-void testNew() {
+TestGroup testNew_() {
     TestGroup t;
 
     TEST_T(dist-w&p,
@@ -96,10 +94,24 @@ void testNew() {
         "ieanylrhts"
         ",;/pzwcvkx"
     );
+    return t;
+}
+void testNew() {
+    testNew_().print();
+}
+
+void testQWERTY() {
+    TestGroup t;
+    TEST_(qwerty,
+        "1234567890"
+        "qwertyuiop"
+        "asdfghjkl;"
+        "zxcvbnm,./"
+    )
     t.print();
 }
 
-void testOther() {
+TestGroup testOther_() {
     TestGroup t;
     TEST_(qwerty,
         "1234567890"
@@ -149,11 +161,20 @@ void testOther() {
         "aersgbtnio"
         "xzcv;kwh,/"
     )
-    TEST_(dickens,
-        "1234567890"
-        "qwfpgjluy;"
-        "arstdhneio"
-        "zxcvbkm,./"
-    )
+    // TEST_(dickens,
+    // "1 2 3 4 5 6 7 8 9 0 q"
+    // "y p o u - v d l c w x"
+    // "i n e a , m h t s r \""
+    // "( ) ; . _ k f g b '"
+    // "/ =             z j
+    // )
+    return t;
+}
+void testOther() {
+    testOther_().print();
+}
+void testAll() {
+    TestGroup t = testNew_();
+    t.combine(testOther_());
     t.print();
 }

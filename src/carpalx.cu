@@ -1,12 +1,12 @@
 #include <algorithm>
 #include <common.cuh>
 
-static constexpr int fingers[]{
+static constexpr int fingers[KEYS] {
     0,1,2,3,3,6,6,7,8,9,
     0,1,2,3,3,6,6,7,8,9,
     0,1,2,3,3,6,6,7,8,9,
 };
-static constexpr double costs1000[] {
+static constexpr double pathCosts[1000] {
     0. , 0.3, 0.6, 0.9, 0. , 0. , 1.8, 0. , 0. , 0. , 0.3, 0.6, 0.9,
     1.2, 0. , 0. , 2.1, 0. , 0. , 0. , 0.6, 0.9, 1.2, 1.5, 0. , 0. ,
     2.4, 0. , 0. , 0. , 0.9, 0. , 1.5, 1.8, 0. , 0. , 2.7, 0. , 0. ,
@@ -220,9 +220,9 @@ inline int getPath2(const char c1, const char c2, const char c3) {
 inline score_t effort(const char c1, const char c2, const char c3) {
     constexpr double kb = 0.3555, kp = 0.6423, ks = 0.4268, k1 = 1, k2 = 0.367, k3 = 0.235;
     constexpr double base[]{
-        2, 2, 2, 2, 2.5, 3, 2, 2, 2, 2,
-        0, 0, 0, 0, 2, 2, 0, 0, 0, 0,
-        2, 2, 2, 2, 3.5, 2, 2, 2, 2, 2,
+        2.0, 2.0, 2.0, 2.0, 2.5, 3.0, 2.0, 2.0, 2.0, 2.0,
+        0.0, 0.0, 0.0, 0.0, 2.0, 2.0, 0.0, 0.0, 0.0, 0.0,
+        2.0, 2.0, 2.0, 2.0, 3.5, 2.0, 2.0, 2.0, 2.0, 2.0,
     };
     constexpr double row[] = {
         0.5, 0, 1
@@ -251,7 +251,7 @@ inline score_t effort(const char c1, const char c2, const char c3) {
         kb * k1 * be1 * (1 + k2 * be2 * (1 + k3 * be3)) +
         kp * k1 * pe1 * (1 + k2 * pe2 * (1 + k3 * pe3));
 
-    triad_effort += ks * costs1000[getPath2(c1, c2, c3)];
+    triad_effort += ks * pathCosts[getPath2(c1, c2, c3)];
     return triad_effort;
 }
 
@@ -278,7 +278,7 @@ inline bool save() {
     for (int i = 0; i < m; ++i) {
         int j = 0;
         for (; j < m; ++j) {
-            if (ordering[j] == QC0[i]) break;
+            if (ordering[j] == KEYS_LOWER[i]) break;
         }
         orderLUT[i] = j;
     }
@@ -315,7 +315,7 @@ inline bool save() {
         file << I;
         for (int j = 0; j < s; ++j) {
             const uchar3 code = arr[i * n + j];
-            file << ' ' << QC0[code.x] << QC0[code.y] << QC0[code.z];
+            file << ' ' << KEYS_LOWER[code.x] << KEYS_LOWER[code.y] << KEYS_LOWER[code.z];
         }
         file << '\n';
     }

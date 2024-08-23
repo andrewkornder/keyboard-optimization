@@ -9,7 +9,7 @@
 typedef uint32_t text_t;
 typedef uint64_t count_t;
 
-inline std::filesystem::path cacheDirectory = R"(K:\data\code\clion\untitled\cached\)";
+inline std::filesystem::path cacheDirectory;
 
 __host__ __device__ static constexpr uint64_t ipow(const uint64_t x, const uint64_t p, const uint64_t m = 1) {
     return p > 0 ? ipow(x, p - 1, m * x) : m;
@@ -147,7 +147,7 @@ struct FinishedText {
     text_t *cpuArray, *gpuArray;
 };
 
-std::unique_ptr<FinishedText> initText(const std::filesystem::path &corpus);
+std::unique_ptr<FinishedText> initText(std::vector<std::filesystem::path> &corpora);
 
 void mapKeys(const char* arr, char* out);
 

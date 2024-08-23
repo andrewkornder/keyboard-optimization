@@ -4,29 +4,32 @@
 #include <unordered_map>
 
 
-typedef std::filesystem::path path_t;
 typedef std::unordered_map<uint64_t, count_t> Counter;
 
 std::string getHashedFile(MD5 hash) {
-    const path_t p = cacheDirectory / hash.hex();
+    const std::filesystem::path p = cacheDirectory / hash.hex();
     return p.string();
 }
-
 
 constexpr uint64_t loadDimension = 3;
 constexpr uint64_t loadBase = 1 << 16;
 
-std::string getHashedFile(const path_t &path) {
+std::string getHashedFile(const std::filesystem::path& path) {
+    if (cacheDirectory.empty()) return "";
+
     MD5 hash;
+    // constexpr uint64_t SALT = 0x4ada93c00a8bf5abULL;
+    // hash.update(SALT);
     hash.update(path.string());
-    // shitty mistake causes me to subtract one instead of reloading all text
-    hash.update((char) (loadDimension - 1));
+    hash.update(loadDimension);
     return getHashedFile(hash);
 }
 
-std::string getHashedFile(const path_t &root, std::vector<path_t> paths) {
+std::string getHashedFile(std::vector<std::filesystem::path> &paths) {
+    if (cacheDirectory.empty()) return "";
+
     MD5 hash;
-    hash.update(root.string()).update(loadDimension);
+    hash.update(loadDimension);
 
     std::sort(paths.begin(), paths.end());
     for (auto &path : paths) {
@@ -53,7 +56,9 @@ public:
 
         if (index == has) {
             file.read(buffer, size);
+
             has = file.gcount();
+            read += has;
             index = 0;
         }
         return buffer[index++];
@@ -61,7 +66,9 @@ public:
     bool eof() const {
         return index == has && file.eof();
     }
+    std::streamsize read = 0;
 };
+
 
 void saveCache(const std::string &path, const Counter &counts);
 void loadNewText(const std::string &saveTo, const std::string &readFrom, Counter &output) {
@@ -75,14 +82,18 @@ void loadNewText(const std::string &saveTo, const std::string &readFrom, Counter
     int pastEnd = 0;
     uint64_t code = 0;
     while (!file.eof() || ++pastEnd < loadDimension) {
-        code = file.get() | (code << sizeof(wchar_t) * 8);
+        code = file.get() | code << sizeof(wchar_t) * 8;
         if constexpr (N != 0) {
-            code = code % N;
+            code = code & (N - 1);
         }
         ++counter[code];
     }
 
-    saveCache(saveTo, counter);
+    // if the cache file is bigger than the actual file, just read it from file next time
+    if (!cacheDirectory.empty() && file.read > 8 * counter.size()) {
+        saveCache(saveTo, counter);
+    }
+
     for (const auto & [key, value] : counter) {
         output[key] += value;
     }
@@ -94,8 +105,8 @@ void saveCache(const std::string &path, const Counter &counts) {
     std::vector<uint64_t> values;
     values.reserve(counts.size());
 
-    for (const auto& p : counts) {
-        values.push_back(p.first);
+    for (const auto& [key, _] : counts) {
+        values.push_back(key);
     }
 
     std::sort(values.begin(), values.end(), [&counts](const uint64_t a, const uint64_t b) {
@@ -116,6 +127,8 @@ void saveCache(const std::string &path, const Counter &counts) {
 }
 
 bool loadCached(const std::string &path, Counter &counter) {
+    if (cacheDirectory.empty()) return false;
+
     std::ifstream file(path);
     if (!file.is_open()) {
         return false;
@@ -152,25 +165,9 @@ bool loadCached(const std::string &path, Counter &counter) {
 }
 
 
-
-std::unique_ptr<FinishedText> initText(const path_t &corpus) {
-    std::vector<path_t> corpora;
-
-    if (is_directory(corpus)) {
-        for (const auto &entry : std::filesystem::recursive_directory_iterator(corpus)) {
-            if (!entry.is_directory()) {
-                corpora.push_back(entry.path());
-            }
-        }
-    } else if (exists(corpus)) {
-        corpora.push_back(corpus);
-    } else {
-        printf("Corpus could not be found: '%ls'.\n", corpus.c_str());
-        exit(1);
-    }
-
+std::unique_ptr<FinishedText> initText(std::vector<std::filesystem::path> &corpora) {
     Counter counts;
-    if (const std::string totalCache = getHashedFile(corpus, corpora) + ".sum"; !loadCached(totalCache, counts)) {
+    if (const std::string totalCache = getHashedFile(corpora) + ".sum"; !loadCached(totalCache, counts)) {
         for (auto &path : corpora) {
             const clock_t start = clock();
             printf("Loading corpus: '%ls'...", path.c_str());

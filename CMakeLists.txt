@@ -40,6 +40,9 @@ function(CREATE_ name)
 
         src/lib/md5.cu
         src/lib/md5.cuh
+
+        src/lib/glob.cuh
+        src/lib/glob.cu
     )
     list(SUBLIST ARGV 1 -1 define)
     target_include_directories(${name} PUBLIC

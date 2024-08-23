@@ -29,7 +29,7 @@
 </rounds>
 
 <corpus>
-.\resources\text
+.\resources\text\**\*
 </corpus>
 
 <output>

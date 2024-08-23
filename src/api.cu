@@ -3,6 +3,7 @@
 
 #include <metric.cuh>
 #include <text.cuh>
+#include <glob.cuh>
 #include <md5.cuh>
 #include "test.cuh"
 #include "record.cuh"
@@ -11,6 +12,22 @@
 
 struct Config {
 private:
+    static std::string formatFileSize(const uint64_t size) {
+        const static char* prefixes[] = {
+            "B", "KiB", "MiB", "GiB", "TiB",
+        };
+        double frac = size;
+        int order = 0;
+        while (frac > 1024) {
+            order++;
+            frac /= 1024;
+        }
+
+        std::string o = formatNumber<2>(frac);
+        o.append(" ").append(prefixes[order]);
+        return o;
+    }
+
     static uint64_t parseNum(const std::string &value) {
         uint64_t x = 0;
         for (const char p : value) {
@@ -63,7 +80,9 @@ private:
             value.append(buf);
             value.push_back('\n');
         }
-        value.pop_back();
+        if (value.at(value.size() - 1) == '\n') {
+            value.pop_back();
+        }
 
         if (buf[1] != '/') {
             printf("No ending tag for key '%s': '%s'\n", key.c_str(), buf);
@@ -130,18 +149,18 @@ private:
     std::set<std::string> seen{};
 
     std::filesystem::path exportTables;
-    std::filesystem::path corpus;
+    std::string corpus;
     std::vector<std::string> textExtensions{};
 
     bool configured(const char* key) {
         return seen.find(key) != seen.end();
     }
 public:
-    explicit Config(const char* path) {
-        std::ifstream cnf(path);
+    explicit Config(const char* configuration) {
+        std::ifstream cnf(configuration);
 
         if (!cnf.is_open()) {
-            printf("Config could not be opened: '%s'\n", path);
+            printf("Config could not be opened: '%s'\n", configuration);
             return;
         }
 
@@ -166,7 +185,7 @@ public:
             exit(1);
         }
 
-        if (!is_directory(cacheDirectory)) {
+        if (configured("cache") && !is_directory(cacheDirectory)) {
             printf("Creating cache directory.\n");
             create_directory(cacheDirectory);
         }
@@ -190,13 +209,10 @@ public:
             size.surviving = 1 << (ceilLog2(size.pop) - 1) / 2;
         }
 
-        const std::shared_ptr text = initText(corpus);
-        const mtype* metric = precomputeMetric(text);
-
         if (!configured("seed")) {
             MD5 seed;
             seed.update((uint64_t) time(nullptr));
-            seed.update((uint64_t) text.get());
+            seed.update((uint64_t) &seen);
             seed.update((uint64_t) clock());
             seed.update(0x7f18ee808626fcb9ULL);
             MD5::Digest hash;
@@ -209,6 +225,37 @@ public:
                 bytes[i % sizeof(SEED)] ^= hash[i];
             }
         }
+
+        uint64_t textBytes = 0;
+        std::vector<std::filesystem::path> corpora;
+        {
+            for (std::filesystem::path &path : glob::rglob(corpus)) {
+                if (!is_directory(path)) {
+                    corpora.push_back(path);
+                    textBytes += file_size(path);
+                }
+            }
+        }
+        if (corpora.size() == 0) {
+            printf("No matching files for pattern '%s'.\n", corpus.c_str());
+            exit(1);
+        }
+
+        printf("\rConfig: {                    ");
+        printf("\n    corpus:          %s file(s) (%s)", F3(corpora.size()), formatFileSize(textBytes).c_str());
+        printf("\n    movable keys:    %d / %d chars", totalMovable, KEYS);
+        printf("\n    population:      %s / %s", F3(size.surviving), F3(size.pop));
+        if (!cacheDirectory.empty()) printf("\n    cache:           %ls", cacheDirectory.c_str());
+        else                         printf("\n    cache:           off");
+        printf("\n    output:          %ls", Record::output.c_str());
+        if (!exportTables.empty()) printf("\n    tables:          %ls", exportTables.c_str());
+        printf("\n    evolution:       %s rounds of %s (plateau length = %s)", F3(rounds), F3(generations), F3(Record::plateauLength));
+        printf("\n    seed:            %llu", SEED);
+        printf("\n}");
+        printf("\n");
+
+        const std::shared_ptr text = initText(corpora);
+        const mtype* metric = precomputeMetric(text);
 
         if (!exportTables.empty()) {
             {
@@ -246,18 +293,6 @@ public:
                 });
             }
         }
-
-        printf("\rConfig: {                                       ");
-        printf("\n    text:            %s chars", F3(text->count));
-        printf("\n    movable keys:    %d / %d chars", totalMovable, KEYS);
-        printf("\n    population:      %s / %s", F3(size.surviving), F3(size.pop));
-        printf("\n    cache:           %ls", cacheDirectory.c_str());
-        printf("\n    output:          %ls", Record::output.c_str());
-        if (!exportTables.empty()) printf("\n    exported tables: %ls", exportTables.c_str());
-        printf("\n    evolution:       %s rounds of %s (plateau length = %s)", F3(rounds), F3(generations), F3(Record::plateauLength));
-        printf("\n    seed:            %llu", SEED);
-        printf("\n}");
-        printf("\n");
     }
 
     struct {
@@ -444,41 +479,42 @@ void run(const Config &cnf, const ArgParser &args) {
 
 
 void printHelpMessage() {
-    constexpr char message[] = R"""(
+    constexpr char configuration[] = R"""(
 Configuration
 -----
 Valid fields are
- - `size` (required, >512): how many keyboards per generation.
- - `survivors` (default = sqrt(0.5 * size)): how many of those keyboards are used to create the next generation.
- - `cache`: a directory to place cached corpora in. if not included, turns off caching.
- - `generations` (default = 30): how many generations to run until finishing the evolution.
- - `plateauLength` (default = 2): after this many generations without improvement, stop evolving.
- - `rounds` (required): when using the `evolve` mode, decides how many keyboards to generate.
- - `output` (default = "./output"): when using the `evolve` mode, decides where to put generated keyboard files.
- - `seed` (default = random): the seed which drives the pRNG of the program (can be written in hex).
- - `exportTables`: if provided, creates two files in this directory with the corpus and metric used.
- - `corpus` (required): a folder to read text from. all files and subfolders will be read as text and
-               used to train the keyboards.
- - `movable` (default = all movable): which keys are allowed to be modified on the QWERTY keyboard.
-                this should be 30 ones or zeros (1 = movable, 0 = left in place).
+ - `size` (required, >512): How many keyboards per generation.
+ - `survivors` (default = sqrt(0.5 * size)): How many of those keyboards are used to create the next generation.
+ - `cache`: A directory to place cached corpora in. If not included, turns off caching.
+ - `generations` (default = 30): How many generations to run until finishing the evolution.
+ - `plateauLength` (default = 2): After this many generations without improvement, stop evolving.
+ - `rounds` (required): When using the `evolve` mode, decides how many keyboards to generate.
+ - `output` (default = "./output"): When using the `evolve` mode, decides where to put generated keyboard files.
+ - `seed` (default = random): The seed which drives the pRNG of the program (can be written in hex).
+ - `exportTables`: If provided, creates two files in this directory with the corpus and metric used.
+ - `corpus` (required): A file or glob pattern to read text from. If this is a pattern, all matching files will be read
+                        as text and used to train the keyboards. Otherwise, it will read the entire file.
+ - `movable` (default = all movable): Which keys are allowed to be modified on the QWERTY keyboard.
+                                      this should be 30 ones or zeros (1 = movable, 0 = left in place).
 
 Of these 10 fields, only `corpus`, `size`, `rounds`, and `output` must be provided.
 The fields `size` and `surviving` will both get rounded up to the nearest power of two.
-
+)""";
+    constexpr char usage[] = R"""(
 USAGE
 -----
 The first argument to the executable must be the path to your configuration file.
 Any other arguments will be treated as modes to run.
 
 There are 8 possibles modes:
- - `help`: show the possible modes/configurable fields
- - `perf`: profile various functions in the code (mostly here for debugging reasons)
- - `rand`: compute the average score of a random keyboard
- - `qwerty`: compute the score of the QWERTY layout
- - `evolve`: evolve new keyboards and place them in the configured output directory
- - `lock`: compute the cost of leaving each single key in its place
- - `test`: test user keyboards given through stdin
- - `test-common`: test a few alternative keyboards and QWERTY
+ - `help`: Show the possible modes/configurable fields.
+ - `perf`: Profile various functions in the code (mostly here for debugging reasons).
+ - `rand`: Compute the average score of a random keyboard.
+ - `qwerty`: Compute the score of the QWERTY layout.
+ - `evolve`: Evolve new keyboards and place them in the configured output directory.
+ - `lock`: Compute the cost of leaving each single key in its place.
+ - `test`: Test user keyboards given through stdin.
+ - `test-common`: Test a few alternative keyboards and QWERTY.
 
 Any mode can be repeated multiple times by following it with a number (e.g. "rand 100" runs "rand" 100 times).
 For example:
@@ -487,7 +523,10 @@ For example:
  2. Print the score for QWERTY.
  3. Print the average score of `size` random keyboards 100 times.
 )""";
-    printf(message + 1);
+    printf(configuration + 1);
+    printf("\n-- More --\r");
+    system("pause 1>NUL");
+    printf(usage + 1);
 }
 
 

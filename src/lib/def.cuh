@@ -30,7 +30,6 @@ inline constexpr char KEYS_UPPER[] = {
 constexpr uint32_t KEYS = std::size(KEYS_LOWER);
 constexpr uint32_t KEYS2 = KEYS * KEYS;
 constexpr uint32_t ALIGNED = 1 << ceilLog2(KEYS);
-constexpr uint32_t y = 1 << ceilLog2(4);
 
 #ifdef METRIC_CARPALX
 constexpr uint32_t textWindow = 3;
@@ -77,8 +76,8 @@ inline void cudaThrowErr(const cudaError_t c, const char* file, const int line) 
 }
 #define err(c) cudaThrowErr(c, __FILE__, __LINE__)
 
-template<typename T, int precision = 4>
-std::string _format3(T x) {
+template<int precision = 4, typename T>
+std::string formatNumber(T x) {
     std::string s;
 
     {
@@ -105,7 +104,7 @@ std::string _format3(T x) {
     }
     return s;
 }
-#define F3(number) _format3(number).c_str()
-#define F3p(number, p) _format3<double, p>(number).c_str()
+#define F3(number) formatNumber(number).c_str()
+#define F3p(number, p) formatNumber<p>(number).c_str()
 
 #endif //DEF_CUH

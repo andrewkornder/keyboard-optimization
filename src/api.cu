@@ -524,8 +524,9 @@ For example:
  3. Print the average score of `size` random keyboards 100 times.
 )""";
     printf(configuration + 1);
-    printf("\n-- More --\r");
+    printf("\n-- More --  \r");
     system("pause 1>NUL");
+    printf("\r            \r");
     printf(usage + 1);
 }
 

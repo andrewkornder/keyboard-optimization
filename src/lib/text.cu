@@ -4,15 +4,17 @@
 #include <unordered_map>
 
 
-typedef std::unordered_map<uint64_t, count_t> Counter;
+constexpr int lmin = '!', lmax = '~' + 1;
+constexpr uint64_t loadBase = lmax - lmin;
+constexpr uint64_t loadDimension = 3;
+constexpr uint64_t validNgrams = ipow(loadBase + 1, loadDimension);
+
 
 std::string getHashedFile(MD5 hash) {
     const std::filesystem::path p = cacheDirectory / hash.hex();
     return p.string();
 }
 
-constexpr uint64_t loadDimension = 3;
-constexpr uint64_t loadBase = 1 << 16;
 
 std::string getHashedFile(const std::filesystem::path& path) {
     if (cacheDirectory.empty()) return "";
@@ -49,7 +51,7 @@ public:
     explicit BufferedFile(const std::string &path, const int mode = std::wifstream::in) : file(path, mode) {
         buffer = new wchar_t[size];
     }
-    ~BufferedFile() { delete buffer; }
+    ~BufferedFile() { delete[] buffer; }
 
     wchar_t get() {
         if (eof()) return (wchar_t) -1;
@@ -70,63 +72,68 @@ public:
 };
 
 
-void saveCache(const std::string &path, const Counter &counts);
-void loadNewText(const std::string &saveTo, const std::string &readFrom, Counter &output) {
-    Counter counter;
-    counter.reserve(500'000);
-
-    constexpr uint64_t N = ipow(loadBase, loadDimension);
+void saveCache(const std::string &path, const count_t* counts);
+void loadNewText(const std::string &saveTo, const std::string &readFrom, count_t* output) {
+    count_t* counter = new count_t[validNgrams]();
+    // counter.reserve(500'000);
 
     BufferedFile file(readFrom);
 
     int pastEnd = 0;
     uint64_t code = 0;
     while (!file.eof() || ++pastEnd < loadDimension) {
-        code = file.get() | code << sizeof(wchar_t) * 8;
-        if constexpr (N != 0) {
-            code = code & (N - 1);
+        unsigned int ch = file.get() - lmin;
+        // sneaky underflow to do the equivalent of `ch < lmin ? lmax : ch;
+        ch = ch >= lmax ? lmax : ch;
+        code = ch + code * (loadBase + 1);
+        if constexpr (validNgrams != 0) {
+            code = code % validNgrams;
         }
         ++counter[code];
     }
 
     // if the cache file is bigger than the actual file, just read it from file next time
-    if (!cacheDirectory.empty() && file.read > 8 * counter.size()) {
+    if (!cacheDirectory.empty() && file.read > 8 * validNgrams) {
         saveCache(saveTo, counter);
     }
 
-    for (const auto & [key, value] : counter) {
-        output[key] += value;
+    for (int key = 0; key < validNgrams; ++key) {
+        output[key] += counter[key];
     }
+
+    delete[] counter;
 }
 
-void saveCache(const std::string &path, const Counter &counts) {
+void saveCache(const std::string &path, const count_t* counts) {
     std::ofstream file(path);
 
     std::vector<uint64_t> values;
-    values.reserve(counts.size());
+    values.reserve(validNgrams / 2);
 
-    for (const auto& [key, _] : counts) {
-        values.push_back(key);
+    for (int key = 0; key < validNgrams; ++key) {
+        if (counts[key] > 0) {
+            values.push_back(key);
+        }
     }
 
-    std::sort(values.begin(), values.end(), [&counts](const uint64_t a, const uint64_t b) {
-        return counts.at(a) > counts.at(b);
+    std::sort(values.begin(), values.end(), [counts](const uint64_t a, const uint64_t b) {
+        return counts[a] > counts[b];
     });
 
     for (const uint64_t key : values) {
         int letters[loadDimension];
-        letterUtils.getCharsAtIndexUnsigned<loadDimension, loadBase - 1>(key, letters);
+        letterUtils.getCharsAtIndexUnsigned<loadDimension, loadBase>(key, letters);
         bool first = true;
         for (const int q : letters) {
             if (!first) file << ',';
             first = false;
             file << q;
         }
-        file << '|' << counts.at(key) << '\n';
+        file << '|' << counts[key] << '\n';
     }
 }
 
-bool loadCached(const std::string &path, Counter &counter) {
+bool loadCached(const std::string &path, count_t* counter) {
     if (cacheDirectory.empty()) return false;
 
     std::ifstream file(path);
@@ -158,7 +165,7 @@ bool loadCached(const std::string &path, Counter &counter) {
             ++ptr;
             cp[i] = x - (i != loadDimension);
         }
-        uint64_t code = letterUtils.getIndexAtChars<loadDimension, loadBase - 1>(cp);
+        const uint64_t code = letterUtils.getIndexAtChars<loadDimension, loadBase>(cp);
         counter[code] += cp[loadDimension];
     }
     return true;
@@ -166,7 +173,7 @@ bool loadCached(const std::string &path, Counter &counter) {
 
 
 std::unique_ptr<FinishedText> initText(std::vector<std::filesystem::path> &corpora) {
-    Counter counts;
+    count_t* counts = new count_t[validNgrams];
     if (const std::string totalCache = getHashedFile(corpora) + ".sum"; !loadCached(totalCache, counts)) {
         for (auto &path : corpora) {
             const clock_t start = clock();
@@ -182,19 +189,22 @@ std::unique_ptr<FinishedText> initText(std::vector<std::filesystem::path> &corpo
 
     count_t* array = new count_t[FinishedText::N]();
 
-    for (const auto [key, value] : counts) {
+    constexpr int skip = loadDimension - textWindow;
+    for (int key = 0; key < validNgrams; ++key) {
+        const count_t value = counts[key];
         int letters[loadDimension];
-        letterUtils.getCharsAtIndexUnsigned<loadDimension, loadBase - 1>(key, letters);
-        constexpr int skip = loadDimension - textWindow;
+        letterUtils.getCharsAtIndexUnsigned<loadDimension, loadBase>(key, letters);
         for (int i = skip; i < loadDimension; ++i) {
-            letters[i] = letterUtils.positionOf(letters[i]);
+            letters[i] = letterUtils.positionOf(lmin + letters[i]);
         }
         const uint64_t i = letterUtils.getIndexAtChars<textWindow, KEYS>(letters + skip);
         array[i] += value;
     }
+    array[0] -= corpora.size() * skip;
 
     std::unique_ptr text = std::make_unique<FinishedText>(array);
-    delete array;
+    delete[] array;
+    delete[] counts;
 
     return text;
 }

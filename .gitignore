@@ -6,4 +6,7 @@ cmake-*
 *.exe
 *.ipynb
 *.py
+*.gen
+*.all
 .ipynb_checkpoints
+output-*/

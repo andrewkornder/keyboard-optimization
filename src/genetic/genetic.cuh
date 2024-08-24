@@ -6,6 +6,8 @@
 #include <vector>
 
 struct population {
+    static bool allowDuplicates;
+
     population(pop_t, pop_t);
     ~population();
 

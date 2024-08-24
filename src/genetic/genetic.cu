@@ -9,6 +9,7 @@
 
 #if true
 
+bool population::allowDuplicates = true;
 population::population(const pop_t n, const pop_t k) {
     this->n = n;
     this->k = k;
@@ -53,16 +54,16 @@ void population::scoreAndSort() {
     sort(n, kbs);
     rearrange();
 
-#ifdef REMOVE_DUPLICATES
-    {
-        identifyDuplicates<<<nblock, nthread>>>(n, kbs);
-        removeDuplicates<<<nblock, nthread>>>(n, kbs);
-    }
+    if (!allowDuplicates) {
+        {
+            identifyDuplicates<<<nblock, nthread>>>(n, kbs);
+            removeDuplicates<<<nblock, nthread>>>(n, kbs);
+        }
 
-    score(n, kbs);
-    sort(n, kbs);
-    rearrange();
-#endif
+        score(n, kbs);
+        sort(n, kbs);
+        rearrange();
+    }
 
     copyRange<<<copyGroups * kblock, kthread>>>(k, kbs, top);
     cudaDeviceSynchronize();

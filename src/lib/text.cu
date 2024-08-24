@@ -27,13 +27,12 @@ std::string getHashedFile(const std::filesystem::path& path) {
     return getHashedFile(hash);
 }
 
-std::string getHashedFile(std::vector<std::filesystem::path> &paths) {
+std::string getHashedFile(const std::vector<std::filesystem::path> &paths) {
     if (cacheDirectory.empty()) return "";
 
     MD5 hash;
     hash.update(loadDimension);
 
-    std::sort(paths.begin(), paths.end());
     for (auto &path : paths) {
         hash.update(path.string());
     }
@@ -41,7 +40,7 @@ std::string getHashedFile(std::vector<std::filesystem::path> &paths) {
 }
 
 class BufferedFile {
-    constexpr static int size = 32ull << 20;
+    constexpr static int size = 16ull << 20;
     std::wifstream file;
     wchar_t* buffer;
     int index = 0;
@@ -99,7 +98,7 @@ void loadNewText(const std::string &saveTo, const std::string &readFrom, count_t
 
     while (!file.eof() || ++pastEnd < loadDimension) {
         if (file.new_) {
-            printf("\r[%c] Loading corpus '%s'... %.2f%%", spinner[spinnerIdx], readFrom.c_str(), 100. * file.read / file.count);
+            printf("\r[%c] Loading '%s'... %.2f%%", spinner[spinnerIdx], readFrom.c_str(), 100. * file.read / file.count);
             spinnerIdx = (spinnerIdx + 1) % 4;
         }
         int ch = file.get() - lmin;
@@ -206,25 +205,36 @@ std::unique_ptr<FinishedText> initText(std::vector<std::filesystem::path> &corpo
     const clock_t start = clock();
     uint64_t bytes = 0;
 
+    for (int i = 0; i < corpora.size(); ++i) {
+        corpora[i] = canonical(corpora[i]);
+    }
+    std::sort(corpora.begin(), corpora.end());
+
     if (const std::string totalCache = getHashedFile(corpora) + ".sum"; !loadCached(totalCache, counts)) {
         for (auto &path : corpora) {
             const clock_t startSingle = clock();
-            printf("Loading corpus: '%ls'...", path.c_str());
+            printf("Loading '%ls'...", path.c_str());
+
+            std::string src;
 
             uint64_t read;
             if (const std::string singleCache = getHashedFile(path) + ".chc"; !loadCached(singleCache, counts)) {
                 loadNewText(singleCache, path.string(), counts);
                 read = file_size(path);
+                src = "file";
             } else {
                 read = std::filesystem::file_size(singleCache);
+                src = "cache";
             }
             bytes += read;
 
             const clock_t elapsed = clock() - startSingle;
-            printf("\rLoaded corpus '%ls' in %s ms.", path.c_str(), F3(elapsed));
+            printf("\rLoaded '%ls' from %s in %s ms.", path.c_str(), src.c_str(), F3(elapsed));
             printf(" (%s/s)                   \n", formatFileSize(read / (double) elapsed * CLOCKS_PER_SEC).c_str());
         }
-        saveCache(totalCache, counts);
+        if (corpora.size() > 1) {
+            saveCache(totalCache, counts);
+        }
     } else {
         bytes += std::filesystem::file_size(totalCache);
     }
@@ -239,7 +249,7 @@ std::unique_ptr<FinishedText> initText(std::vector<std::filesystem::path> &corpo
     for (int key = 0; key < validNgrams; ++key) {
         const count_t value = counts[key];
         int letters[loadDimension];
-        letterUtils.getCharsAtIndexUnsigned<loadDimension, loadBase>(key, letters);
+        letterUtils.getCharsAtIndex<loadDimension, loadBase>(key, letters);
         for (int i = skip; i < loadDimension; ++i) {
             letters[i] = letterUtils.positionOf(lmin + letters[i]);
         }

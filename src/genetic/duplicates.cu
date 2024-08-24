@@ -9,7 +9,6 @@ __device__ bool compareArrays(const char* a, const char* b) {
     return true;
 }
 
-#ifdef REMOVE_DUPLICATES
 #include <rng.cuh>
 
 
@@ -63,8 +62,6 @@ __global__ void removeDuplicates(const pop_t n, const keyboard* kbs) {
         }
     }
 }
-
-#endif
 
 
 __global__ void countDuplicates(const pop_t n, const keyboard* kbs, pop_t* count) {

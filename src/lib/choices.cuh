@@ -14,16 +14,9 @@ constexpr int generations = 25, rounds = 20000;
 
 constexpr int maxSwaps = 10;
 constexpr int saveDist = 0;
-constexpr int maxRepeat = 2;
 
 #define MOV true
 #define LCK false
-
-#define RNG64
-
-
-// #define REMOVE_DUPLICATES
-
 
 #define MINIMIZE
 // #define MAXIMIZE

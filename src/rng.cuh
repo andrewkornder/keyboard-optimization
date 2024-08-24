@@ -3,11 +3,7 @@
 
 #include <def.cuh>
 
-#ifdef RNG64
 typedef uint64_t state;
-#else
-typedef uint32_t state;
-#endif
 
 __device__ state next(state &x);
 __device__ float nextf(state &x);

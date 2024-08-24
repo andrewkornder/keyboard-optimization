@@ -136,10 +136,8 @@ __global__ LAUNCH_BOUNDS_DEFAULT void scoreGPU(const pop_t n, keyboard* populati
 
     const pop_t idx = IDX(pop_t);
     if (idx >= n) return;
-#ifdef REMOVE_DUPLICATES
     if (!population[idx].rescore) return;
     population[idx].rescore = false;
-#endif
 
     keyboard &kb = population[idx];
     const char* positions = kb.arr;
@@ -339,10 +337,8 @@ __global__ LAUNCH_BOUNDS_DEFAULT void scoreGPU(const pop_t n, keyboard* populati
 
     const pop_t idx = IDX(pop_t);
     if (idx >= n) return;
-#ifdef REMOVE_DUPLICATES
     if (!population[idx].rescore) return;
     population[idx].rescore = false;
-#endif
 
     keyboard &kb = population[idx];
     const char* positions = kb.arr;
@@ -369,10 +365,8 @@ __global__ LAUNCH_BOUNDS_DEFAULT void scoreGPU(const pop_t n, keyboard* populati
     const int tid = threadIdx.x;
     const pop_t idx = IDX(pop_t);
     if (idx >= n) return;
-#ifdef REMOVE_DUPLICATES
     if (!population[idx].rescore) return;
     population[idx].rescore = false;
-#endif
 
     const char* positions = population[idx].arr;
 

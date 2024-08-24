@@ -52,51 +52,31 @@ private:
         return true;
     }
 
-    bool match(std::ifstream &cnf) {
-        char line[256];
-        if (!getKey(cnf, line, false)) return false;
-
-        const std::string key = line + 1;
-
-        std::string value;
-        char buf[256] = {};
-        while (!getKey(cnf, buf, true)) {
-            value.append(buf);
-            value.push_back('\n');
+    bool match(const std::string &key, const std::string &value) {
+        if (seen.find(key) != seen.end()) {
+            printf("Field '%s' was defined more than once. The previous definition(s) will be ignored\n", key.c_str());
         }
-        if (value.at(value.size() - 1) == '\n') {
-            value.pop_back();
-        }
-
-        if (buf[1] != '/') {
-            printf("No ending tag for key '%s': '%s'\n", key.c_str(), buf);
-            return false;
-        }
-
-        if (key != buf + 2) {
-            printf("Keys do not match '%s' != '%s'\n", key.c_str(), buf + 2);
-            return false;
-        }
-
         seen.insert(key);
         if (key == "movable") {
-            std::vector<int> lmov;
-            lmov.reserve(KEYS);
+            std::set<int> lmov;
 
             for (const char c : value) {
-                if (c == '0' || c == '1') {
-                    lmov.push_back(c != '0');
+                if (const int i = letterUtils.positionOf(c); i != -1) {
+                    if (lmov.find(i) != lmov.end()) {
+                        printf("Field 'movable' contains '%c' multiple times. Ignoring duplicates...\n", c);
+                    }
+                    lmov.insert(i);
                 }
             }
-            if (lmov.size() == KEYS) {
-                bool arr[KEYS];
-                for (int i = 0; i < KEYS; ++i) {
-                    arr[i] = lmov[i];
+            if (lmov.size() <= KEYS) {
+                bool arr[KEYS] = {};
+                for (const int i : lmov) {
+                    arr[i] = true;
                 }
                 cudaMemcpyToSymbol(movable, arr, sizeof(arr), 0, cudaMemcpyHostToDevice);
             } else {
                 seen.extract(key);
-                printf("Movable mask is the wrong size.\nExpected: %d\nFound: %lld.\n", KEYS, lmov.size());
+                printf("Movable mask is the wrong size.\nExpected: at most %d\nFound: %lld.\n", KEYS, lmov.size());
             }
         } else if (key == "size") {
             size.pop = 1 << ceilLog2(parseNum(value));
@@ -122,12 +102,57 @@ private:
             corpus = value;
         } else if (key == "exportTables") {
             exportTables = value;
+        } else if (key == "duplicates") {
+            population::allowDuplicates = value == "on";
         } else {
             printf("Unknown key: '%s'\n", key.c_str());
             seen.extract(key);
             return false;
         }
         return true;
+    }
+
+    void parse(const char* configuration) {
+        std::ifstream cnf(configuration);
+
+        if (!cnf.is_open()) {
+            printf("Config could not be opened: '%s'\n", configuration);
+            exit(1);
+        }
+
+        while (!cnf.eof()) {
+            if (const char start = cnf.get(); !isalnum(start) || start == '#') {
+                if (start != '\n') cnf.ignore(1024, '\n');
+                continue;
+            }
+            cnf.seekg(-1, std::ifstream::cur);
+
+            std::string key, value;
+            key.reserve(16);
+            value.reserve(256);
+
+            char buffer[1024];
+            cnf.get(buffer, 1024, '=');
+            cnf.get();
+
+            key = buffer;
+            while (key.back() == ' ') key.pop_back();
+
+            while (true) {
+                cnf.get(buffer, 1024, '\n');
+                cnf.get();
+                const char* start = buffer;
+                if (value.empty()) {
+                    while (*start == ' ') start++;
+                }
+
+                value.append(start);
+                if (value.back() != '\\') break;
+                value.pop_back();
+            }
+            while (value.back() == ' ') value.pop_back();
+            match(key, value);
+        }
     }
 
     std::set<std::string> seen{};
@@ -141,24 +166,7 @@ private:
     }
 public:
     explicit Config(const char* configuration) {
-        {
-            std::ifstream cnf(configuration);
-
-            if (!cnf.is_open()) {
-                printf("Config could not be opened: '%s'\n", configuration);
-                return;
-            }
-
-            while (true) {
-                match(cnf);
-                while (cnf.get() != '<' && !cnf.eof()) {
-                    cnf.seekg(-1, std::ifstream::cur);
-                    cnf.ignore(64, '\n');
-                }
-                if (cnf.eof()) break;
-                cnf.seekg(-1, std::ifstream::cur);
-            }
-        }
+        parse(configuration);
 
         bool invalid = false;
         for (const char* required : {"corpus", "output", "size", "rounds"}) {
@@ -220,6 +228,7 @@ public:
         printf("\n    corpus:          %s file(s) (%s)", F3(corpora.size()), formatFileSize(textBytes).c_str());
         printf("\n    movable keys:    %d / %d chars", totalMovable, KEYS);
         printf("\n    population:      %s / %s", F3(size.surviving), F3(size.pop));
+        printf("\n    duplicates:      %s", population::allowDuplicates ? "on" : "off");
         printf("\n    cache:           %ls", cacheDirectory.empty() ? L"off" : cacheDirectory.c_str());
         printf("\n    tables:          %ls", exportTables.empty() ? L"not exported" : exportTables.c_str());
         printf("\n    output:          %ls", Record::output.c_str());
@@ -345,7 +354,7 @@ class ArgParser {
         if (word == "rand"       ) return Mode::Random;
         if (word == "qwerty"     ) return Mode::QWERTY;
         if (word == "help"       ) return Mode::Help;
-        printf("invalid mode: '%s'\n", word.c_str());
+        printf("Invalid mode given: '%s'\n", word.c_str());
         return Mode::Help;
     }
 
@@ -464,8 +473,20 @@ void run(const Config &cnf, const ArgParser &args) {
 
 void printHelpMessage() {
     constexpr char configuration[] = R"""(
-Configuration
+CONFIGURATION
 -----
+This program needs a configuration file to properly run. This is just a text file with a few fields that need to be filled out.
+Each field is declared with the name and a value separated by an equals sign. Every field should be placed on different lines.
+
+For example, the line `corpus = ./text/` declares that the field `corpus` should be `"./text/"`.
+A line can be commented out by starting it with '#'. Ending a line with a backslash ('\') continues the line.
+
+A field can be one of the following types of values:
+ 1. A boolean value represented by "on" or "off".
+ 2. An integer represented by a series of digits (anything besides the digits 0-9 will be ignored).
+ 3. A string of arbitrary text.
+ 4. A path-like string (e.g. "./folder/file.txt" or "C:/folder/*.txt").
+
 Valid fields are
  - `size` (required, >512): How many keyboards per generation.
  - `survivors` (default = sqrt(0.5 * size)): How many of those keyboards are used to create the next generation.
@@ -473,13 +494,15 @@ Valid fields are
  - `generations` (default = 30): How many generations to run until finishing the evolution.
  - `plateauLength` (default = 2): After this many generations without improvement, stop evolving.
  - `rounds` (required): When using the `evolve` mode, decides how many keyboards to generate.
+ - `duplicates` (default = on): Whether to tolerate duplicate keyboards in each generation. Deduplication is slow,
+                                and offers only marginal improvements, so I suggest leaving duplicates on.
  - `output` (default = "./output"): When using the `evolve` mode, decides where to put generated keyboard files.
  - `seed` (default = random): The seed which drives the pRNG of the program (can be written in hex).
  - `exportTables`: If provided, creates two files in this directory with the corpus and metric used.
  - `corpus` (required): A file or glob pattern to read text from. If this is a pattern, all matching files will be read
                         as text and used to train the keyboards. Otherwise, it will read the entire file.
  - `movable` (default = all movable): Which keys are allowed to be modified on the QWERTY keyboard.
-                                      this should be 30 ones or zeros (1 = movable, 0 = left in place).
+                                      this should be a list of every key which is allowed to move (e.g. "abcdef,.").
 
 Of these 10 fields, only `corpus`, `size`, `rounds`, and `output` must be provided.
 The fields `size` and `surviving` will both get rounded up to the nearest power of two.

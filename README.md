@@ -10,25 +10,28 @@ This is a program that optimizes a keyboard layout for a given corpus of text. I
 INSTALLATION
 -----
 This program is made with CUDA on windows. If you have an NVIDIA device and CUDA installed, you can build this project with CMake and nvcc.
-The project provides six buildable targets which all use the same interface, the only difference being the metric and whether it de-duplicates the keyboards.
-- dist: the first metric
-- dist-ddup: the first metric with additional code to ensure that each keyboard in a generation is unique
-- okp: the second metric
-- okp-ddup: you get the idea
-- carpalx
-- carpalx-ddup
+The project provides three buildable targets which all use the same interface, the only difference being the metric used.
+- distance
+- dickens
+- carpalx  
+
+The names should be self-explanatory.
 
 
 CONFIGURATION
 -----
 This program needs a configuration file to properly run. This is just a text file with a few fields that need to be filled out.
-Each field is declared with an opening tag "<name>", a value, and a closing tag "</name>". For example,
-```
-<corpus>  
-./text  
-</corpus>
-```
-declares that the field `corpus` should be `./text/`.
+Each field is declared with the name and a value separated by an equals sign. Every field should be placed on different lines.  
+
+For example, the line `corpus = ./text/` declares that the field `corpus` should be `"./text/"`.  
+A line can be commented out by starting it with '#'. Ending a line with a backslash ('\') continues the line.
+
+A field can be one of the following types of values:
+1. A boolean value represented by "on" or "off".
+2. An integer represented by a series of digits (anything besides the digits 0-9 will be ignored).
+3. A string of arbitrary text.
+4. A path-like string (e.g. "./folder/file.txt" or "C:/folder/*.txt").
+
 Valid fields are
 - `size` (required, >512): How many keyboards per generation.
 - `survivors` (default = sqrt(0.5 * size)): How many of those keyboards are used to create the next generation.
@@ -36,13 +39,15 @@ Valid fields are
 - `generations` (default = 30): How many generations to run until finishing the evolution.
 - `plateauLength` (default = 2): After this many generations without improvement, stop evolving.
 - `rounds` (required): When using the `evolve` mode, decides how many keyboards to generate.
+- `duplicates` (default = on): Whether to tolerate duplicate keyboards in each generation. Deduplication is slow,
+  and offers only marginal improvements, so I suggest leaving duplicates on.
 - `output` (default = "./output"): When using the `evolve` mode, decides where to put generated keyboard files.
 - `seed` (default = random): The seed which drives the pRNG of the program (can be written in hex).
 - `exportTables`: If provided, creates two files in this directory with the corpus and metric used.
 - `corpus` (required): A file or glob pattern to read text from. If this is a pattern, all matching files will be read
   as text and used to train the keyboards. Otherwise, it will read the entire file.
 - `movable` (default = all movable): Which keys are allowed to be modified on the QWERTY keyboard.
-  this should be 30 ones or zeros (1 = movable, 0 = left in place).
+  this should be a list of every key which is allowed to move (e.g. "abcdef,.").
 
 Of these 10 fields, only `corpus`, `size`, `rounds`, and `output` must be provided.  
 The fields `size` and `surviving` will both get rounded up to the nearest power of two.

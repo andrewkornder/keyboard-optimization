@@ -59,12 +59,11 @@ endfunction()
 
 function(CREATE_DD name metric)
     CREATE_(${name} ${metric})
-    CREATE_("${name}-ddup" ${metric} REMOVE_DUPLICATES)
 endfunction()
 
 add_custom_target(compile-all)
-CREATE_DD(dist METRIC_DIST)
-CREATE_DD(okp METRIC_OKP)
+CREATE_DD(distance METRIC_DIST)
+CREATE_DD(dickens METRIC_OKP)
 CREATE_DD(carpalx METRIC_CARPALX)
 
 

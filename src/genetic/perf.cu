@@ -83,7 +83,6 @@ void runPerfMethods(population &group) {
         ), score);
     PERFEND
 
-#ifdef REMOVE_DUPLICATES
     {
         PERFSTART(1)
             PROF_(BODY(
@@ -97,7 +96,6 @@ void runPerfMethods(population &group) {
             ), SSBody)
         PERFEND
     }
-#endif
 
     {
         PERFSTART(1.5)

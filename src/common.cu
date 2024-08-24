@@ -67,9 +67,7 @@ __global__ void initKeyboards(const pop_t n, keyboard* pointers, char* base) {
 
         pointers[i].stats = {};
 
-#ifdef REMOVE_DUPLICATES
         pointers[i].rescore = true;
-#endif
     }
 }
 
@@ -95,7 +93,5 @@ __global__ void randomize(const pop_t size, keyboard* group) {
         SWAP(pos, j, k);
     }
 
-#ifdef REMOVE_DUPLICATES
     group[i].rescore = true;
-#endif
 }

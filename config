@@ -1,45 +1,23 @@
-<movable>
-1111111111
-1111111111
-1111111111
-</movable>
+movable =  \
+qwertyuiop \
+asdfghjkl; \
+zxcvbnm,./
 
-<size>
-2,000,000
-</size>
+size = 2,000,000
+survivors = 1,000
 
-<survivors>
-1,000
-</survivors>
+rounds = 1,000
+generations = 40
+plateauLength = 2
 
-<cache>
-.\cached
-</cache>
+cache = .\generated\cached
 
-<generations>
-40
-</generations>
+corpus = .\resources\text\**\*.text
+corpus = .\resources\text\100BT\01-0.text
 
-<plateauLength>
-2
-</plateauLength>
+output = .\generated\output-dist
+exportTables = .\generated\tables
 
-<rounds>
-1000
-</rounds>
+duplicates = off
 
-<corpus>
-.\resources\text\**\*.txt
-</corpus>
-
-<output>
-./output-dist
-</output>
-
-<exportTables>
-.\tables
-</exportTables>
-
-# <seed>
-# 0x78866e9d648e7309
-# </seed>
+# seed = 0x78866e9d648e7309

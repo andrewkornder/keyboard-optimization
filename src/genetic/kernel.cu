@@ -69,9 +69,7 @@ __global__ void createNext(const pop_t n, const pop_t k, keyboard* population, c
 
     char* out = population[i].arr;
     population[i].stats = {};
-#ifdef REMOVE_DUPLICATES
     population[i].rescore = true;
-#endif
 
 #ifdef SINGLEMUTATE
 #ifdef ORDERED_CREATION

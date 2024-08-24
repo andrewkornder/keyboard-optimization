@@ -57,9 +57,7 @@ struct keyboard {
 #endif
     stats stats{};
 
-#ifdef REMOVE_DUPLICATES
     bool rescore = true;
-#endif
 };
 
 struct keyboardc {

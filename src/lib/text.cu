@@ -50,10 +50,16 @@ class BufferedFile {
 public:
     explicit BufferedFile(const std::string &path, const int mode = std::wifstream::in) : file(path, mode) {
         buffer = new wchar_t[size];
+
+        const std::streampos fsize = file.tellg();
+        file.seekg(0, std::ifstream::end);
+
+        count = file.tellg() - fsize;
+        file.seekg(0, std::ifstream::beg);
     }
     ~BufferedFile() { delete[] buffer; }
 
-    wchar_t get() {
+    __inline__ wchar_t get() {
         if (eof()) return (wchar_t) -1;
 
         if (index == has) {
@@ -62,12 +68,19 @@ public:
             has = file.gcount();
             read += has;
             index = 0;
+            new_ = true;
+        } else {
+            new_ = false;
         }
         return buffer[index++];
     }
+
     bool eof() const {
         return index == has && file.eof();
     }
+
+    bool new_ = false;
+    std::streamsize count = 0;
     std::streamsize read = 0;
 };
 
@@ -75,17 +88,25 @@ public:
 void saveCache(const std::string &path, const count_t* counts);
 void loadNewText(const std::string &saveTo, const std::string &readFrom, count_t* output) {
     count_t* counter = new count_t[validNgrams]();
-    // counter.reserve(500'000);
 
     BufferedFile file(readFrom);
 
     int pastEnd = 0;
     uint64_t code = 0;
+
+    constexpr char spinner[4] = {'|', '/', '-', '\\'};
+    int spinnerIdx = 0;
+
     while (!file.eof() || ++pastEnd < loadDimension) {
-        unsigned int ch = file.get() - lmin;
-        // sneaky underflow to do the equivalent of `ch < lmin ? lmax : ch;
-        ch = ch >= lmax ? lmax : ch;
-        code = ch + code * (loadBase + 1);
+        if (file.new_) {
+            printf("\r[%c] Loading corpus '%s'... %.2f%%", spinner[spinnerIdx], readFrom.c_str(), 100. * file.read / file.count);
+            spinnerIdx = (spinnerIdx + 1) % 4;
+        }
+        int ch = file.get() - lmin;
+        if (ch < 0 || loadBase <= ch) {
+            ch = -1;
+        }
+        code = 1 + ch + code * (loadBase + 1);
         if constexpr (validNgrams != 0) {
             code = code % validNgrams;
         }
@@ -107,8 +128,13 @@ void loadNewText(const std::string &saveTo, const std::string &readFrom, count_t
 void saveCache(const std::string &path, const count_t* counts) {
     std::ofstream file(path);
 
+    uint64_t existing = 0;
+    for (int i = 0; i < ngramCount; ++i) {
+        existing += counts[i] > 0;
+    }
+
     std::vector<uint64_t> values;
-    values.reserve(validNgrams / 2);
+    values.reserve(existing);
 
     for (int key = 0; key < validNgrams; ++key) {
         if (counts[key] > 0) {
@@ -122,12 +148,17 @@ void saveCache(const std::string &path, const count_t* counts) {
 
     for (const uint64_t key : values) {
         int letters[loadDimension];
-        letterUtils.getCharsAtIndexUnsigned<loadDimension, loadBase>(key, letters);
+        letterUtils.getCharsAtIndex<loadDimension, loadBase>(key, letters);
+        for (const int c : letters) {
+            file << (char) (c + lmin);
+        }
+        file << '|';
+
         bool first = true;
         for (const int q : letters) {
             if (!first) file << ',';
             first = false;
-            file << q;
+            file << (1 + q);
         }
         file << '|' << counts[key] << '\n';
     }
@@ -141,16 +172,13 @@ bool loadCached(const std::string &path, count_t* counter) {
         return false;
     }
 
-    char line[64] = {};
-    file.get(line, 64, '\n');
-    file.seekg(std::ifstream::beg);
-
 
     while (!file.eof()) {
+        char line[64] = {};
         file.get(line, 64, '\n');
         file.get();
 
-        const char* ptr = line;
+        const char* ptr = line + loadDimension + 1;
         if (*ptr > '9' || *ptr < '0') {
             break;
         }
@@ -174,18 +202,36 @@ bool loadCached(const std::string &path, count_t* counter) {
 
 std::unique_ptr<FinishedText> initText(std::vector<std::filesystem::path> &corpora) {
     count_t* counts = new count_t[validNgrams];
+
+    const clock_t start = clock();
+    uint64_t bytes = 0;
+
     if (const std::string totalCache = getHashedFile(corpora) + ".sum"; !loadCached(totalCache, counts)) {
         for (auto &path : corpora) {
-            const clock_t start = clock();
+            const clock_t startSingle = clock();
             printf("Loading corpus: '%ls'...", path.c_str());
+
+            uint64_t read;
             if (const std::string singleCache = getHashedFile(path) + ".chc"; !loadCached(singleCache, counts)) {
                 loadNewText(singleCache, path.string(), counts);
+                read = file_size(path);
+            } else {
+                read = std::filesystem::file_size(singleCache);
             }
-            const clock_t elapsed = clock() - start;
-            printf("\rLoaded corpus '%ls' in %s ms.\n", path.c_str(), F3(elapsed));
+            bytes += read;
+
+            const clock_t elapsed = clock() - startSingle;
+            printf("\rLoaded corpus '%ls' in %s ms.", path.c_str(), F3(elapsed));
+            printf(" (%s/s)                   \n", formatFileSize(read / (double) elapsed * CLOCKS_PER_SEC).c_str());
         }
         saveCache(totalCache, counts);
+    } else {
+        bytes += std::filesystem::file_size(totalCache);
     }
+
+    const clock_t elapsed = clock() - start;
+    printf("Loaded all corpora in %s ms.", F3(elapsed));
+    printf(" (%s/s)                         \n", formatFileSize(bytes / (double) elapsed * CLOCKS_PER_SEC).c_str());
 
     count_t* array = new count_t[FinishedText::N]();
 

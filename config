@@ -29,17 +29,17 @@
 </rounds>
 
 <corpus>
-.\resources\text\**\*
+.\resources\text\**\*.txt
 </corpus>
 
 <output>
 ./output-dist
 </output>
 
-# <exportTables>
-# .\tables
-# </exportTables>
+<exportTables>
+.\tables
+</exportTables>
 
-<seed>
-0x78866e9d648e7309
-</seed>
+# <seed>
+# 0x78866e9d648e7309
+# </seed>

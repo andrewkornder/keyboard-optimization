@@ -104,6 +104,23 @@ std::string formatNumber(T x) {
     }
     return s;
 }
+
+template<typename T>
+std::string formatFileSize(const T size) {
+    const static char* prefixes[] = {
+        "B", "KiB", "MiB", "GiB", "TiB",
+    };
+    double frac = size;
+    int order = 0;
+    while (frac > 1024) {
+        order++;
+        frac /= 1024;
+    }
+
+    std::string o = formatNumber<2>(frac);
+    o.append(" ").append(prefixes[order]);
+    return o;
+}
 #define F3(number) formatNumber(number).c_str()
 #define F3p(number, p) formatNumber<p>(number).c_str()
 

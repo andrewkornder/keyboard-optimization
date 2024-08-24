@@ -249,3 +249,19 @@ std::string MD5::hex() {
     }
     return output;
 }
+
+MD5::Digest64 MD5::checksum() {
+    Digest digest;
+    checksum(digest);
+
+    constexpr int s = sizeof(uint64_t);
+
+    Digest64 out;
+    for (int i = 0; i < s; ++i) {
+        out.lo |= (uint64_t) digest[i] << 8 * (s - 1 - i);
+    }
+    for (int i = 0; i < s; ++i) {
+        out.hi |= (uint64_t) digest[s + i] << 8 * (s - 1 - i);
+    }
+    return out;
+}

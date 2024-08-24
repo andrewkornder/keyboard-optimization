@@ -66,11 +66,16 @@ public:
     static constexpr size_t hashSize = 16;
 
     // type for computing MD5 hash
-    typedef std::array<uint8_t, hashSize> Digest;
+    struct Digest64 {uint64_t hi{}; uint64_t lo{};};
 
     // checksum has a side effect of resetting the state of the object.
+private:
+    typedef std::array<uint8_t, hashSize> Digest;
     void checksum(Digest&);
+
+public:
     std::string hex();
+    Digest64 checksum();
 
 private:
     uint32_t m_buf[4];

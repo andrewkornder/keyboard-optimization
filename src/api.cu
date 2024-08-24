@@ -12,22 +12,6 @@
 
 struct Config {
 private:
-    static std::string formatFileSize(const uint64_t size) {
-        const static char* prefixes[] = {
-            "B", "KiB", "MiB", "GiB", "TiB",
-        };
-        double frac = size;
-        int order = 0;
-        while (frac > 1024) {
-            order++;
-            frac /= 1024;
-        }
-
-        std::string o = formatNumber<2>(frac);
-        o.append(" ").append(prefixes[order]);
-        return o;
-    }
-
     static uint64_t parseNum(const std::string &value) {
         uint64_t x = 0;
         for (const char p : value) {
@@ -157,21 +141,23 @@ private:
     }
 public:
     explicit Config(const char* configuration) {
-        std::ifstream cnf(configuration);
+        {
+            std::ifstream cnf(configuration);
 
-        if (!cnf.is_open()) {
-            printf("Config could not be opened: '%s'\n", configuration);
-            return;
-        }
-
-        while (true) {
-            match(cnf);
-            while (cnf.get() != '<' && !cnf.eof()) {
-                cnf.seekg(-1, std::ifstream::cur);
-                cnf.ignore(64, '\n');
+            if (!cnf.is_open()) {
+                printf("Config could not be opened: '%s'\n", configuration);
+                return;
             }
-            if (cnf.eof()) break;
-            cnf.seekg(-1, std::ifstream::cur);
+
+            while (true) {
+                match(cnf);
+                while (cnf.get() != '<' && !cnf.eof()) {
+                    cnf.seekg(-1, std::ifstream::cur);
+                    cnf.ignore(64, '\n');
+                }
+                if (cnf.eof()) break;
+                cnf.seekg(-1, std::ifstream::cur);
+            }
         }
 
         bool invalid = false;
@@ -183,11 +169,6 @@ public:
         }
         if (invalid) {
             exit(1);
-        }
-
-        if (configured("cache") && !is_directory(cacheDirectory)) {
-            printf("Creating cache directory.\n");
-            create_directory(cacheDirectory);
         }
 
         if (configured("movable")) {
@@ -215,15 +196,9 @@ public:
             seed.update((uint64_t) &seen);
             seed.update((uint64_t) clock());
             seed.update(0x7f18ee808626fcb9ULL);
-            MD5::Digest hash;
-            seed.checksum(hash);
 
-            SEED = 0;
-            uint8_t* bytes = (uint8_t*) &SEED;
-
-            for (int i = 0; i < MD5::hashSize; ++i) {
-                bytes[i % sizeof(SEED)] ^= hash[i];
-            }
+            const auto [hi, lo] = seed.checksum();
+            SEED = hi + lo;
         }
 
         uint64_t textBytes = 0;
@@ -241,23 +216,32 @@ public:
             exit(1);
         }
 
-        printf("\rConfig: {                    ");
+        printf(  "Config: {                    ");
         printf("\n    corpus:          %s file(s) (%s)", F3(corpora.size()), formatFileSize(textBytes).c_str());
         printf("\n    movable keys:    %d / %d chars", totalMovable, KEYS);
         printf("\n    population:      %s / %s", F3(size.surviving), F3(size.pop));
-        if (!cacheDirectory.empty()) printf("\n    cache:           %ls", cacheDirectory.c_str());
-        else                         printf("\n    cache:           off");
+        printf("\n    cache:           %ls", cacheDirectory.empty() ? L"off" : cacheDirectory.c_str());
+        printf("\n    tables:          %ls", exportTables.empty() ? L"not exported" : exportTables.c_str());
         printf("\n    output:          %ls", Record::output.c_str());
-        if (!exportTables.empty()) printf("\n    tables:          %ls", exportTables.c_str());
         printf("\n    evolution:       %s rounds of %s (plateau length = %s)", F3(rounds), F3(generations), F3(Record::plateauLength));
         printf("\n    seed:            %llu", SEED);
         printf("\n}");
         printf("\n");
 
+        if (configured("cache") && !is_directory(cacheDirectory)) {
+            printf("Creating cache directory.\n");
+            create_directory(cacheDirectory);
+        }
+
         const std::shared_ptr text = initText(corpora);
         const mtype* metric = precomputeMetric(text);
 
         if (!exportTables.empty()) {
+            if (!is_directory(exportTables)) {
+                printf("Creating directory to export tables to...");
+                create_directory(exportTables);
+            }
+
             {
                 std::ofstream file(exportTables / "text.chc");
 
@@ -534,6 +518,7 @@ For example:
 int main(const int argc, const char* argv[]) {
     if (argc < 2) {  // executable config ...
         printf("Invalid number of arguments. Expected >= 1, Got: %d\n", argc - 1);
+        printHelpMessage();
         return 1;
     }
 

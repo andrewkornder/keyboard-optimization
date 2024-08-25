@@ -6,6 +6,10 @@ set(CMAKE_CUDA_STANDARD 17)
 function(CREATE_ name)
     add_executable(${name}
         src/api.cu
+
+        src/lib/config.cu
+        src/lib/config.cuh
+
         src/record.cu
         src/record.cuh
 

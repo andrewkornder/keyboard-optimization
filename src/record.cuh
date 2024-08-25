@@ -3,6 +3,7 @@
 
 #include <rng.cuh>
 #include <general.cuh>
+#include <config.cuh>
 
 template <typename T, bool hasMedian>
 struct History {
@@ -20,13 +21,11 @@ struct History {
 
 class Record {
 public:
-    static int plateauLength;
-    static std::filesystem::path output;
-
-    explicit Record(population* g, int generations, int rounds);
+    explicit Record(population* g, const Config &config);
 
     void get();
 
+    Config config;
     int generations, rounds;
 
     int unique = 0;

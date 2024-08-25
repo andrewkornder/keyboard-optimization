@@ -6,7 +6,7 @@ zxcvbnm,./
 size = 2,000,000
 survivors = 1,000
 
-rounds = 1,000
+rounds = 500
 generations = 40
 plateauLength = 2
 
@@ -17,6 +17,8 @@ corpus = .\resources\text\**\*.text
 output = .\generated\output-dist
 exportTables = .\generated\tables
 
-duplicates = off
+duplicates = on
+
+showOutput = off
 
 # seed = 0x78866e9d648e7309

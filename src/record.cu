@@ -8,14 +8,17 @@
 
 constexpr int setSize = ALIGNED / sizeof(uint64_t);
 
-Record::Record(population* g, const int generations, const int rounds) :
-    generations(generations), rounds(rounds), history(generations),
-    reduced(generations), totalHistory(rounds), totalReduced(rounds)
+Record::Record(population* g, const Config &config) :
+    config(config), generations(config.generations), rounds(config.rounds),
+    history(config.generations), reduced(config.generations), totalHistory(config.rounds), totalReduced(config.rounds)
 {
-    if (!is_directory(output)) {
-        printf("Creating output directory: '%ls'\n", output.c_str());
-        create_directory(output);
+    if (!is_directory(config.output)) {
+        printf("Creating output directory: '%ls'\n", config.output.c_str());
+        create_directory(config.output);
     }
+
+    generationsRan = std::vector(rounds, 0);
+    uniqueHistory = std::vector(rounds, 0);
     this->g = g;
 }
 
@@ -39,7 +42,6 @@ void Record::addToSet(const char* positions) {
     ++unique;
     for (int i = 0; i < setSize; ++i) {
         set.push_back(cast[i]);
-
     }
 }
 
@@ -47,6 +49,7 @@ void Record::get() {
     double secondsPerIt = 0;
     int last = clock();
     for (int i = 0; i < rounds; ++i) {
+        const state seed = SEED;
         std::unique_ptr<Snapshot> o = next(i);
 
         addToSet(o->best->arr);
@@ -59,7 +62,7 @@ void Record::get() {
         if (i) secondsPerIt = secondsPerIt * (1 - 0.2) + seconds * 0.2;
         else secondsPerIt = seconds;
 
-        saveToFile(i, SEED, o);
+        saveToFile(i, seed, o);
 
         const double minutesLeft = (rounds - i - 1) * secondsPerIt / 60.;
 
@@ -71,10 +74,10 @@ void Record::get() {
             printf(" ");
         }
 
-#ifdef SHOWOUTPUT
-        printf("\n");
-        printArrQ(p->best->arr);
-#endif
+        if (config.showOutput) {
+            printf("\n");
+            printArrQ(p->best->arr);
+        }
     }
     saveAllToFile();
 }
@@ -84,10 +87,6 @@ void Record::writeKB(std::ofstream &file, const char* positions) {
     char letters[KEYS] = {};
     for (int i = 0; i < KEYS; i++) {
         letters[positions[i]] = i;
-        const char p = positions[i];
-        if (p < 10) file << "0";
-        file << (int) p << ",";
-        if (i % 10 == 9) file << '\n';
     }
     file << '\n';
     for (int i = 0; i < KEYS; i++) {
@@ -109,58 +108,78 @@ void writePlot(std::ofstream &file, const std::vector<T> &y, const int size) {
 
 
 void Record::saveAllToFile() const {
-    std::ofstream file(output / "all.gen", std::ofstream::out);
+    std::ofstream file(config.output / "all.gen", std::ofstream::out);
+    file << config.buffer;
 
-    file << "Total organisms seen: " << snap->size << "\n\n";
+    file << "\nTotal organisms seen: " << snap->size << "\n";
 
-    file << "\nBest organism (" << snap->best->stats << "):\n";
+    file << '\n';
+    file << "Best organism (score = " << snap->best->stats << "):\n";
     writeKB(file, snap->best->arr);
 
-    file << "\nWorst organism (" << snap->worst->stats << "):\n";
+    file << '\n';
+    file << "Worst organism (score = " << snap->worst->stats << "):\n";
     writeKB(file, snap->worst->arr);
 
     file << "History:\n";
+    file << "Best scores: ";
     writePlot(file, totalHistory.best, rounds);
+    file << "Average scores: ";
     writePlot(file, totalHistory.average, rounds);
+    file << "Worst scores: ";
     writePlot(file, totalHistory.worst, rounds);
-    file << '\n';
-    writePlot(file, totalReduced.best, rounds);
-    writePlot(file, totalReduced.average, rounds);
-    writePlot(file, totalReduced.worst, rounds);
-    file << '\n';
-    writePlot(file, uniqueHistory, rounds);
-    file << '\n';
-    writePlot(file, generationsRan, rounds);
 
-    file.flush();
-    file.close();
+    file << '\n';
+    file << "Reduced:\n";
+    file << "Best scores: ";
+    writePlot(file, totalReduced.best, rounds);
+    file << "Average scores: ";
+    writePlot(file, totalReduced.average, rounds);
+    file << "Worst scores: ";
+    writePlot(file, totalReduced.worst, rounds);
+
+    file << "Unique layouts seen: ";
+    writePlot(file, uniqueHistory, rounds);
+    file << "Length of each round: ";
+    writePlot(file, generationsRan, rounds);
 }
 
+
 void Record::saveToFile(const int i, const state seed, const std::unique_ptr<Snapshot> &result) const {
-    std::ofstream file((output / std::to_string(i)).string() + ".gen", std::ofstream::out);
+    std::ofstream file((config.output / std::to_string(i)).string() + ".gen", std::ofstream::out);
+    const int length = generationsRan[i];
 
-    file << "SEED: " << seed << "\n";
-    file << "Run: " << i + 1 << " / " << rounds;
-    file << "\nGenerations: " << generationsRan[i] << " x " << result->size << " organisms\n\n";
+    file << "Seed: " << seed << '\n';
+    file << "Round: " << i + 1 << " / " << rounds << '\n';
 
-    file << "\nBest organism (" << result->best->stats << "):\n";
+    file << "Generations: " << length << " x " << g->n << " organisms\n";
+    file << "Total organisms: " << result->size << '\n';
+
+    file << '\n';
+    file << "Best organism (score = " << result->best->stats << "):\n";
     writeKB(file, result->best->arr);
 
-    file << "\nWorst organism (" << result->worst->stats << "):\n";
+    file << '\n';
+    file << "Worst organism (score = " << result->worst->stats << "):\n";
     writeKB(file, result->worst->arr);
 
     file << "History:\n";
-    writePlot(file, history.best, generationsRan[i]);
-    writePlot(file, history.average, generationsRan[i]);
-    writePlot(file, history.median, generationsRan[i]);
-    writePlot(file, history.worst, generationsRan[i]);
+    file << "Best scores: ";
+    writePlot(file, history.best, length);
+    file << "Average scores: ";
+    writePlot(file, history.average, length);
+    file << "Median scores: ";
+    writePlot(file, history.median, length);
+    file << "Worst scores: ";
+    writePlot(file, history.worst, length);
     file << '\n';
-    writePlot(file, reduced.best, generationsRan[i]);
-    writePlot(file, reduced.average, generationsRan[i]);
-    writePlot(file, reduced.worst, generationsRan[i]);
-
-    file.flush();
-    file.close();
+    file << "Reduced:\n";
+    file << "Best scores: ";
+    writePlot(file, reduced.best, length);
+    file << "Average scores: ";
+    writePlot(file, reduced.average, length);
+    file << "Worst scores: ";
+    writePlot(file, reduced.worst, length);
 }
 
 template<bool median>
@@ -176,8 +195,8 @@ class Distribution {
 
 public:
     Distribution() {}
-    explicit Distribution(const int index) {
-        file.open((Record::output / std::to_string(index)).string() + ".dist", std::ofstream::out);
+    explicit Distribution(const Config &config, const int index) {
+        file.open((config.output / std::to_string(index)).string() + ".dist", std::ofstream::out);
     }
 
     void add(population &g, const std::unique_ptr<Snapshot> &snapshot) {
@@ -207,7 +226,7 @@ public:
 std::unique_ptr<Snapshot> Record::next(const int i) {
     Distribution dist;
     if (i < saveDist) {
-        dist = Distribution(i);
+        dist = Distribution(config, i);
     }
 
     g->init();
@@ -225,7 +244,7 @@ std::unique_ptr<Snapshot> Record::next(const int i) {
         dist.add(*g, curr);
 
         if (total->best->stats.score == lastScore) {
-            if (++repeated == plateauLength) break;
+            if (repeated++ == config.plateauLength) break;
         } else repeated = 0;
 
         lastScore = total->best->stats.score;
@@ -245,6 +264,3 @@ std::unique_ptr<Snapshot> Record::next(const int i) {
 
     return total;
 }
-
-int Record::plateauLength = 2;
-std::filesystem::path Record::output = "output";

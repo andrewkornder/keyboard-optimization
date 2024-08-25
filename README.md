@@ -48,8 +48,9 @@ Valid fields are
   as text and used to train the keyboards. Otherwise, it will read the entire file.
 - `movable` (default = all movable): Which keys are allowed to be modified on the QWERTY keyboard.
   this should be a list of every key which is allowed to move (e.g. "abcdef,.").
+- `showOutput` (default = off): Whether to show each generated keyboard while running `evolve`.
 
-Of these 10 fields, only `corpus`, `size`, `rounds`, and `output` must be provided.  
+Of these fields, only `corpus`, `size`, `rounds`, and `output` must be provided.  
 The fields `size` and `surviving` will both get rounded up to the nearest power of two.
 
 USAGE

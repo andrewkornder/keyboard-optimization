@@ -3,7 +3,6 @@
 #include "constants.cuh"
 
 
-constexpr int generations = 25, rounds = 20000;
 // #define METRIC_CARPALX
 // #define METRIC_OKP
 // #define METRIC_DIST

@@ -149,8 +149,6 @@ struct FinishedText {
 
 std::unique_ptr<FinishedText> initText(std::vector<std::filesystem::path> &corpora);
 
-void mapKeys(const char* arr, char* out);
-
 __host__ __device__ void printArr(const char* arr);
 __host__ void printArrQ(const char* arr);
 #endif //TEXT_CUH

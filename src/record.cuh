@@ -4,13 +4,13 @@
 #include <rng.cuh>
 #include <general.cuh>
 
-template <typename T, int Size, bool hasMedian>
+template <typename T, bool hasMedian>
 struct History {
-    History() {
-        best.reserve(Size);
-        average.reserve(Size);
-        if (hasMedian) median.reserve(Size);
-        worst.reserve(Size);
+    explicit History(const int size) {
+        best.reserve(size);
+        average.reserve(size);
+        if (hasMedian) median.reserve(size);
+        worst.reserve(size);
     }
     std::vector<T> best{};
     std::vector<double> average{};
@@ -23,20 +23,22 @@ public:
     static int plateauLength;
     static std::filesystem::path output;
 
-    explicit Record(population* g);
+    explicit Record(population* g, int generations, int rounds);
 
     void get();
 
+    int generations, rounds;
+
     int unique = 0;
-    std::vector<int> uniqueHistory = std::vector<int>(rounds);
-    std::vector<int> generationsRan = std::vector<int>(rounds);
+    std::vector<int> uniqueHistory;
+    std::vector<int> generationsRan;
     std::vector<uint64_t> set;
 
     population* g;
 
-    History<stats, generations, true> history;
-    History<stats, generations, false> reduced;
-    History<stats, rounds, false> totalHistory, totalReduced;
+    History<stats, true> history;
+    History<stats, false> reduced;
+    History<stats, false> totalHistory, totalReduced;
 
     std::unique_ptr<Snapshot> snap = nullptr;
 
@@ -49,8 +51,8 @@ private:
 
     void saveToFile(int i, state seed, const std::unique_ptr<Snapshot> &result) const;
 
-    template<int Size, bool median>
-    static void add(const std::unique_ptr<Snapshot> &snap, History<stats, Size, median> &arr);
+    template<bool median>
+    static void add(const std::unique_ptr<Snapshot> &snap, History<stats, median> &arr);
 
     std::unique_ptr<Snapshot> next(int i);
 };

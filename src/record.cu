@@ -8,7 +8,10 @@
 
 constexpr int setSize = ALIGNED / sizeof(uint64_t);
 
-Record::Record(population* g) {
+Record::Record(population* g, const int generations, const int rounds) :
+    generations(generations), rounds(rounds), history(generations),
+    reduced(generations), totalHistory(rounds), totalReduced(rounds)
+{
     if (!is_directory(output)) {
         printf("Creating output directory: '%ls'\n", output.c_str());
         create_directory(output);
@@ -160,8 +163,8 @@ void Record::saveToFile(const int i, const state seed, const std::unique_ptr<Sna
     file.close();
 }
 
-template<int Size, bool median>
-void Record::add(const std::unique_ptr<Snapshot> &snap, History<stats, Size, median> &arr) {
+template<bool median>
+void Record::add(const std::unique_ptr<Snapshot> &snap, History<stats, median> &arr) {
     arr.best.push_back(snap->best->stats);
     arr.average.push_back(snap->average);
     if (median) arr.median.push_back(snap->median->stats);

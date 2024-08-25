@@ -352,7 +352,6 @@ stats score(const char* positions) {
 #elif defined(METRIC_CARPALX)
 
 #include "carpalx.cu"
-const bool __b = save();
 
 void Metric::add(const int index, const char keys[3]) const {
     if (keys[0] != -1 && keys[1] != -1 && keys[2] != -1) {

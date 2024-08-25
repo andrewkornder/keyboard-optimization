@@ -230,7 +230,7 @@ std::unique_ptr<FinishedText> initText(std::vector<std::filesystem::path> &corpo
 
             const clock_t elapsed = clock() - startSingle;
             printf("\rLoaded '%ls' from %s in %s ms.", path.c_str(), src.c_str(), F3(elapsed));
-            printf(" (%s/s)                   \n", formatFileSize(read / (double) elapsed * CLOCKS_PER_SEC).c_str());
+            printf(" (%s/s)   \n", formatFileSize(read / (double) elapsed * CLOCKS_PER_SEC).c_str());
         }
         if (corpora.size() > 1) {
             saveCache(totalCache, counts);
@@ -241,7 +241,7 @@ std::unique_ptr<FinishedText> initText(std::vector<std::filesystem::path> &corpo
 
     const clock_t elapsed = clock() - start;
     printf("Loaded all corpora in %s ms.", F3(elapsed));
-    printf(" (%s/s)                         \n", formatFileSize(bytes / (double) elapsed * CLOCKS_PER_SEC).c_str());
+    printf(" (%s/s)     \n", formatFileSize(bytes / (double) elapsed * CLOCKS_PER_SEC).c_str());
 
     count_t* array = new count_t[FinishedText::N]();
 
@@ -263,15 +263,6 @@ std::unique_ptr<FinishedText> initText(std::vector<std::filesystem::path> &corpo
     delete[] counts;
 
     return text;
-}
-
-
-void mapKeys(const char* arr, char* out) {
-    for (int i = 0, k = 0; k < KEYS; ++i) {
-        if (const int j = letterUtils.positionOf(arr[i]); j != -1) {
-            out[j] = k++;
-        }
-    }
 }
 
 __host__ __device__ void printArr(const char* arr) {

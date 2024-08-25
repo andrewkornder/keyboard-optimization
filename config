@@ -13,7 +13,6 @@ plateauLength = 2
 cache = .\generated\cached
 
 corpus = .\resources\text\**\*.text
-corpus = .\resources\text\100BT\01-0.text
 
 output = .\generated\output-dist
 exportTables = .\generated\tables

@@ -2,28 +2,10 @@
 #include <lib/text.cuh>
 #include <common.cuh>
 #include <iostream>
+#include <map>
 #include <metric.cuh>
+#include <unordered_map>
 #include <vector>
-
-
-stats test(const char* kb) {
-    char t[KEYS];
-    mapKeys(kb, t);
-
-    return score(t);
-}
-
-void show(const std::string &string, const stats &out) {
-    const text_t* arr = (text_t*) ((char*) &out + sizeof(out.score));
-
-    printf("%s:\n", string.c_str());
-    printf("    %-13s = %s\n", "score", F3(out.score));
-    for (int i = 0; i < stats::attrs; ++i) {
-        printf("    %-13s = %s\n", stats::names[i], F3(arr[i]));
-    }
-    printf("\n");
-}
-
 
 class TestGroup {
     std::vector<std::string> names;
@@ -37,9 +19,21 @@ public:
         }
     }
 
-    void add(const std::string &name, const char* kb) {
+    void add(const std::string &name, const stats score) {
         names.push_back(name);
-        scores.push_back(test(kb));
+        scores.push_back(score);
+    }
+
+    static void show(const std::string &string, const stats &out) {
+        printf("%s:\n", string.c_str());
+        printf("    %-13s = %s\n", "score", F3(out.score));
+        if constexpr (stats::attrs > 0) {
+            const text_t* arr = (text_t*) ((char*) &out + sizeof(out.score));
+            for (int i = 0; i < stats::attrs; ++i) {
+                printf("    %-13s = %s\n", stats::names[i], F3(arr[i]));
+            }
+        }
+        printf("\n");
     }
 
     void print() const {
@@ -62,110 +56,151 @@ public:
         }
     }
 };
-#define TEST_(_name,s) { \
-    constexpr char arr_[] = {s}; \
-    t.add(#_name, arr_); \
-}
-#define TEST_T(name, s) TEST_(test{##name##},s)
-#define TEST_N(name, s) TEST_(name,s)
-TestGroup testNew_() {
-    TestGroup t;
 
-    TEST_T(dist-w&p,
-        "1234567890"
-        "j.glykcub;"
-        "ietrhdnosa"
-        "/xwmzpf,vq"
-    );
-    TEST_T(dist-full,
-        "1234567890"
-        "jbglykcu,;"
-        "istrhdnoea"
-        "/vwmzpf.xq"
-    );
-    TEST_T(okp1,
-        "1234567890"
-        "/oupqxlbfw"
-        "eainkmhtsc"
-        ";.,yzjrdvg"
-    );
-    TEST_T(okp2,
-        "1234567890"
-        ".uofqjmdbg"
-        "ieanylrhts"
-        ",;/pzwcvkx"
-    );
-    return t;
-}
+struct TestCollection {
+    std::unordered_map<std::string, std::vector<char>> lut{};
 
-void test(const std::string &name, const char* keyboard) {
+    TestCollection() {
+        add(
+            "dist-w&p",
+            "1234567890"
+            "j.glykcub;"
+            "ietrhdnosa"
+            "/xwmzpf,vq"
+        );
+        add(
+            "dist-full",
+            "1234567890"
+            "jbglykcu,;"
+            "istrhdnoea"
+            "/vwmzpf.xq"
+        );
+        add(
+            "okp1",
+            "1234567890"
+            "/oupqxlbfw"
+            "eainkmhtsc"
+            ";.,yzjrdvg"
+        );
+        add(
+            "okp2",
+            "1234567890"
+            ".uofqjmdbg"
+            "ieanylrhts"
+            ",;/pzwcvkx"
+        );
+        add(
+            "qwerty",
+            "1234567890"
+            "qwertyuiop"
+            "asdfghjkl;"
+            "zxcvbnm,./"
+        );
+        add(
+            "alphabet",
+            "1234567890"
+            "abcdefghij"
+            "klmnopqrs;"
+            "tuvwxyz,./"
+        );
+        add(
+            "dvorak",
+            "1234567890"
+            "/,.pyfgcrl"
+            "aoeuidhtns"
+            ";qjkxbmwvz"
+        );
+        add(
+            "colemak",
+            "1234567890"
+            "qwfpgjluy;"
+            "arstdhneio"
+            "zxcvbkm,./"
+        );
+        add(
+            "carpalx",
+            "1234567890"
+            "qgmlwbyuv;"
+            "dstnriaeoh"
+            "zxcfjkp,./"
+        );
+        add(
+            "arensito",
+            "1234567890"
+            "ql,p/;fudk"
+            "arenbgsito"
+            "zw.hjvcymx"
+        );
+        add(
+            "asset",
+            "1234567890"
+            "qwjfgypul;"
+            "asetdhnior"
+            "zxcvbkm,./"
+        );
+        add(
+            "capewell",
+            "1234567890"
+            ".ywdfjpluq"
+            "aersgbtnio"
+            "xzcv;kwh,/"
+        );
+    }
+
+    void add(const std::string &name, const char* array) {
+        std::vector<char> &arr = lut[name];
+        arr.clear();
+        for (const char* ptr = array; *ptr != '\0'; ++ptr) {
+            arr.push_back(*ptr);
+        }
+    }
+
+    void remove(const std::string &name) {
+        lut.erase(name);
+    }
+
+    void test(TestGroup &tg) const {
+        for (const auto &[name, _] : lut) {
+            test(tg, name);
+        }
+    }
+
+    void test(TestGroup &tg, const std::string &name) const {
+        if (lut.find(name) == lut.end()) {
+            return;
+        }
+
+        char t[KEYS];
+        const std::vector<char> &arr = lut.at(name);
+
+        int k = 0;
+        for (const char c : arr) {
+            if (const int j = letterUtils.positionOf(c); j != -1) {
+                t[j] = k++;
+            }
+        }
+        if (k != KEYS) {
+            printf("Keyboard layout '%s' must have %d valid keys: Found %d.\n", name.c_str(), k, KEYS);
+        } else {
+            tg.add(name, score(t));
+        }
+    }
+} tests;
+
+
+void testAll() {
     TestGroup t;
-    t.add(name, keyboard);
+    tests.test(t);
     t.print();
 }
 
-TestGroup testOther_() {
-    TestGroup t;
-    TEST_(qwerty,
-        "1234567890"
-        "qwertyuiop"
-        "asdfghjkl;"
-        "zxcvbnm,./"
-    )
-    TEST_(alphabet,
-        "1234567890"
-        "abcdefghij"
-        "klmnopqrs;"
-        "tuvwxyz,./"
-    )
-    TEST_(dvorak,
-        "1234567890"
-        "/,.pyfgcrl"
-        "aoeuidhtns"
-        ";qjkxbmwvz"
-    )
-    TEST_(colemak,
-        "1234567890"
-        "qwfpgjluy;"
-        "arstdhneio"
-        "zxcvbkm,./"
-    )
-    TEST_(carpalx,
-        "1234567890"
-        "qgmlwbyuv;"
-        "dstnriaeoh"
-        "zxcfjkp,./"
-    )
-    TEST_(arensito,
-        "1234567890"
-        "ql,p/;fudk"
-        "arenbgsito"
-        "zw.hjvcymx"
-    )
-    TEST_(asset,
-        "1234567890"
-        "qwjfgypul;"
-        "asetdhnior"
-        "zxcvbkm,./"
-    )
-    TEST_(capewell,
-        "1234567890"
-        ".ywdfjpluq"
-        "aersgbtnio"
-        "xzcv;kwh,/"
-    )
-    // TEST_(dickens,
-    // "1 2 3 4 5 6 7 8 9 0 q"
-    // "y p o u - v d l c w x"
-    // "i n e a , m h t s r \""
-    // "( ) ; . _ k f g b '"
-    // "/ =             z j
-    // )
-    return t;
+
+bool testable(const std::string &name) {
+    return tests.lut.find(name) != tests.lut.end();
 }
-void testAll() {
-    TestGroup t = testNew_();
-    t.combine(testOther_());
+void test(const std::string &name) {
+    TestGroup t;
+    tests.test(t, name);
     t.print();
 }
 
@@ -202,7 +237,9 @@ void testUser() {
 
         printf("Your keyboard:\n");
         printArrQ(keyboard);
-        test("result", keyboard);
+
+        tests.add("result", keyboard);
     }
     exit:
+    tests.remove("result");
 }

@@ -57,19 +57,29 @@ USAGE
 Once you have the executable, you can run it from the command line.
 The first argument to the executable must be the path to your configuration file.
 Any other arguments will be treated as modes to run.
-There are 8 possibles modes:
+There are 7 possibles modes:
 - `help`: Show the possible modes/configurable fields.
 - `perf`: Profile various functions in the code (mostly here for debugging reasons).
 - `rand`: Compute the average score of a random keyboard.
-- `qwerty`: Compute the score of the QWERTY layout.
 - `evolve`: Evolve new keyboards and place them in the configured output directory.
 - `lock`: Compute the cost of leaving each single key in its place.
 - `test`: Test user keyboards given through stdin.
-- `test-common`: Test a few alternative keyboards and QWERTY.
+- `test-all`: Test a few alternative keyboards and QWERTY.
+
+Additionally, using the name of a common keyboard layout will compute the score of that layout on this metric.
+Valid layouts are:
+- qwerty
+- alphabet
+- dvorak
+- colemak
+- carpalx
+- arensito
+- asset
+- capewell
 
 Any mode can be repeated multiple times by following it with a number (e.g. "rand 100" runs "rand" 100 times).  
 For example:  
-`dist.exe configuration.txt qwerty rand 100` will do the following:
+`dist.exe configuration.txt qwerty rand 3` will do the following:
 1. Load the configuration from `configuration.txt`
 2. Print the score for QWERTY.
-3. Print the average score of `size` random keyboards 100 times.
+3. Show the average score of `size` random keyboards for three trials.

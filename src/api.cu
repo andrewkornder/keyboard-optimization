@@ -301,7 +301,7 @@ std::unique_ptr<Snapshot> getLockedScore(population &group, const bool mv[KEYS],
 
     std::unique_ptr<Snapshot> all = nullptr;
     for (int try_ = 0; try_ < tries; ++try_) {
-        printf("%d...\r", try_);
+        printf("Trial %d / %d...\r", try_, tries);
         group.init();
         for (int j = 0; j < 25; ++j) {
             group.advance();
@@ -309,7 +309,7 @@ std::unique_ptr<Snapshot> getLockedScore(population &group, const bool mv[KEYS],
         if (all == nullptr) {
             all = group.snapshot();
         } else {
-            std::unique_ptr<Snapshot> s = group.snapshot();
+            std::unique_ptr s = group.snapshot();
             all->add(s);
         }
     }
@@ -319,54 +319,34 @@ std::unique_ptr<Snapshot> getLockedScore(population &group, const bool mv[KEYS],
 // todo: dont rearrange but just move pointer for kbs which will be overwritten anyway
 // todo: multiple scored in single kernel pass
 
-enum class Mode {
-    Perf = 1,
-    Lock = 2,
-    Evolve = 4,
-    TestAll = 8,
-    TestUser = 16,
-    Random = 32,
-    QWERTY = 64,
-    Help = 128,
+struct Mode {
+    std::string word;
+    int repeat;
 
-    None = 0,
+    Mode(const std::string &word, const int repeat) : word(word), repeat(repeat) {}
 };
-#define DEFINE_BITWISE2(symbol) \
-Mode operator##symbol(const Mode a, const Mode b) { \
-return (Mode) ((int) a symbol (int) b); \
-}
-#define DEFINE_BITWISE1(symbol) \
-Mode operator##symbol(const Mode a) { \
-    return (Mode) (symbol(int) a); \
-}
-DEFINE_BITWISE2(&)
-DEFINE_BITWISE2(|)
-DEFINE_BITWISE2(^)
-DEFINE_BITWISE1(~)
 
 class ArgParser {
-    static Mode getFlag(const std::string &word) {
-        if (word == "perf"       ) return Mode::Perf;
-        if (word == "lock"       ) return Mode::Lock;
-        if (word == "evolve"     ) return Mode::Evolve;
-        if (word == "test"       ) return Mode::TestUser;
-        if (word == "test-all"   ) return Mode::TestAll;
-        if (word == "rand"       ) return Mode::Random;
-        if (word == "qwerty"     ) return Mode::QWERTY;
-        if (word == "help"       ) return Mode::Help;
+    static std::string getFlag(const std::string &word) {
+        for (const char* valid : {"perf", "lock", "evolve", "test", "test-all", "rand", "help"}) {
+            if (word == valid) return word;
+        }
+        if (testable(word)) return word;
+
         printf("Invalid mode given: '%s'\n", word.c_str());
-        return Mode::Help;
+        return "help";
     }
 
-    Mode all = Mode::None;
 public:
-    std::vector<std::pair<Mode, int>> modes{};
+    std::vector<Mode> modes{};
+    std::set<std::string> all;
 
     explicit ArgParser(const char* argv[], const int argc) {
-        for (int i = 0; i < argc; ++i) {
-            Mode mode = getFlag(argv[i]);
+        for (int i = 2; i < argc; ++i) {
+            std::string mode = getFlag(argv[i]);
+            
             int rep = 1;
-            if (mode != Mode::None && i != argc - 1) {
+            if (i != argc - 1) {
                 bool number = true;
                 int x = 0;
                 for (const char* ptr = argv[i + 1]; *ptr != '\0'; ptr++) {
@@ -382,19 +362,27 @@ public:
                     ++i;
                 }
             }
-            modes.push_back(std::pair{mode, rep});
-            all = all | mode;
+
+            modes.emplace_back(mode, rep);
+            all.insert(mode);
         }
     }
     bool hasArgs() const { return modes.size() > 0; }
-    bool hasMode(const Mode m) const {
-        return (all & m) != Mode::None;
+
+    bool hasMode(const std::string &mode) const {
+        return all.find(mode) != all.end();
+    }
+    bool hasMode(const std::initializer_list<std::string> &arr) const {
+        for (const std::string &s : arr) {
+            if (hasMode(s)) return true;
+        }
+        return false;
     }
 };
 
 void run(const Config &cnf, const ArgParser &args) {
     pop_t P = 0, K = 0;
-    if (args.hasMode(Mode::Evolve | Mode::Lock | Mode::Perf | Mode::Random)) {
+    if (args.hasMode({"evolve", "perf", "lock", "rand"})) {
         P = cnf.size.pop;
         K = cnf.size.surviving;
         {
@@ -408,63 +396,43 @@ void run(const Config &cnf, const ArgParser &args) {
 
     for (const auto [mode, repetitions]: args.modes) {
         for (int rep = 0; rep < repetitions; ++rep) {
-            switch (mode) {
-                case Mode::TestAll: {
-                    testAll();
-                    break;
+            if (mode == "test-all") {
+                testAll();
+            } else if (mode == "test") {
+                testUser();
+            } else if (testable(mode)) {
+                test(mode);
+            } else if (mode == "perf") {
+                runPerfMethods(group);
+                runPerfRound(group, cnf.generations, cnf.rounds);
+            } else if (mode == "rand") {
+                group.init();
+                group.scoreAndSort();
+                printf("Average score for %s randomized organisms: %s\n", F3(group.n), F3p(group.averageScore(), 4));
+            } else if (mode == "lock") {
+                bool movableSend[KEYS] = {};
+                memset(movableSend, MOV, KEYS);
+
+                score_t best, worst;
+                {
+                    const std::unique_ptr<Snapshot> base = getLockedScore(group, movableSend, 30);
+                    best = base->best->stats.score, worst = base->worst->stats.score;
                 }
-                case Mode::TestUser: {
-                    testUser();
-                    break;
-                }
-                case Mode::QWERTY: {
-                    constexpr char qwerty[] {
-                        "1234567890"
-                        "qwertyuiop"
-                        "asdfghjkl;"
-                        "zxcvbnm,./"
-                    };
-                    test("qwerty", qwerty);
-                    break;
-                }
-                case Mode::Perf: {
-                    runPerfMethods(group);
-                    runPerfRound(group, generations, rounds);
-                    break;
-                }
-                case Mode::Random: {
-                    group.init();
-                    group.scoreAndSort();
-                    printf("Average score for %s randomized organisms: %s\n", F3(group.n), F3p(group.averageScore(), 4));
-                    break;
-                }
-                case Mode::Lock: {
-                    bool movableSend[KEYS] = {};
+
+                for (int i = 0; i < KEYS; ++i) {
                     memset(movableSend, MOV, KEYS);
+                    movableSend[i] = LCK;
 
-                    score_t best, worst;
-                    {
-                        const std::unique_ptr<Snapshot> base = getLockedScore(group, movableSend, 30);
-                        best = base->best->stats.score, worst = base->worst->stats.score;
-                    }
-
-                    for (int i = 0; i < KEYS; ++i) {
-                        memset(movableSend, MOV, KEYS);
-                        movableSend[i] = LCK;
-
-                        const std::unique_ptr<Snapshot> s = getLockedScore(group, movableSend, 5);
-                        printf("Locked %d: [%f, %f]\n", i, s->best->stats.score / best, s->worst->stats.score / worst);
-                    }
-                    break;
+                    const std::unique_ptr<Snapshot> s = getLockedScore(group, movableSend, 5);
+                    printf("Locked %c: [%f, %f]\n", KEYS_LOWER[i], s->best->stats.score / best, s->worst->stats.score / worst);
                 }
-                case Mode::Evolve: {
-                    Record rec(&group);
-                    rec.get();
-                    break;
-                }
-                case Mode::Help:
-                case Mode::None:
-                    break;
+            } else if (mode == "evolve") {
+                Record rec(&group, cnf.generations, cnf.rounds);
+                rec.get();
+            } else if (mode == "help") {}
+            else {
+                printf("What the fuck happened.\n");
+                exit(0);
             }
         }
     }
@@ -472,7 +440,7 @@ void run(const Config &cnf, const ArgParser &args) {
 
 
 void printHelpMessage() {
-    constexpr char configuration[] = R"""(
+    constexpr char message[] = R"""(
 CONFIGURATION
 -----
 This program needs a configuration file to properly run. This is just a text file with a few fields that need to be filled out.
@@ -506,22 +474,32 @@ Valid fields are
 
 Of these 10 fields, only `corpus`, `size`, `rounds`, and `output` must be provided.
 The fields `size` and `surviving` will both get rounded up to the nearest power of two.
-)""";
-    constexpr char usage[] = R"""(
+
+
 USAGE
 -----
 The first argument to the executable must be the path to your configuration file.
 Any other arguments will be treated as modes to run.
 
-There are 8 possibles modes:
+There are 7 possibles modes:
  - `help`: Show the possible modes/configurable fields.
  - `perf`: Profile various functions in the code (mostly here for debugging reasons).
  - `rand`: Compute the average score of a random keyboard.
- - `qwerty`: Compute the score of the QWERTY layout.
  - `evolve`: Evolve new keyboards and place them in the configured output directory.
  - `lock`: Compute the cost of leaving each single key in its place.
  - `test`: Test user keyboards given through stdin.
- - `test-common`: Test a few alternative keyboards and QWERTY.
+ - `test-all`: Test a few alternative keyboards and QWERTY.
+
+Additionally, using the name of a common keyboard layout will compute the score of that layout on this metric.
+Valid layouts are:
+ - qwerty
+ - alphabet
+ - dvorak
+ - colemak
+ - carpalx
+ - arensito
+ - asset
+ - capewell
 
 Any mode can be repeated multiple times by following it with a number (e.g. "rand 100" runs "rand" 100 times).
 For example:
@@ -530,24 +508,20 @@ For example:
  2. Print the score for QWERTY.
  3. Print the average score of `size` random keyboards 100 times.
 )""";
-    printf(configuration + 1);
-    printf("\n-- More --  \r");
-    system("pause 1>NUL");
-    printf("\r            \r");
-    printf(usage + 1);
+    printf(message + 1);
 }
 
 
 int main(const int argc, const char* argv[]) {
     if (argc < 2) {  // executable config ...
         printf("Invalid number of arguments. Expected >= 1, Got: %d\n", argc - 1);
-        printHelpMessage();
+        printf("\nUsage:\n%ls config.txt [mode1 [mode2 [...]]\n", std::filesystem::path(argv[0]).filename().c_str());
         return 1;
     }
 
     {
-        const ArgParser args(argv + 2, argc - 2);
-        if (args.hasMode(Mode::Help)) {
+        const ArgParser args(argv, argc);
+        if (args.hasMode("help")) {
             printHelpMessage();
             printf("Press any key to continue...");
             system("pause 1>NUL");
@@ -561,8 +535,8 @@ int main(const int argc, const char* argv[]) {
         run(cnf, args);
     }
 
-    // PAUSE("Waiting...");
-    printf("\nFinished successfully. Press any key to exit.");
-    system("pause 1>NUL");
+    printf("\nFinished successfully.\n");
+    // printf("\nFinished successfully. Press any key to exit.");
+    // system("pause 1>NUL");
     return 0;
 }

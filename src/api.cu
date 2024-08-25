@@ -125,7 +125,7 @@ void run(const Config &cnf, const ArgParser &args) {
                 printf("Average score for %s randomized organisms: %s\n", F3(group.n), F3p(group.averageScore(), 4));
             } else if (mode == "lock") {
                 bool movableSend[KEYS] = {};
-                memset(movableSend, MOV, KEYS);
+                memset(movableSend, true, KEYS);
 
                 score_t best, worst;
                 {
@@ -134,8 +134,8 @@ void run(const Config &cnf, const ArgParser &args) {
                 }
 
                 for (int i = 0; i < KEYS; ++i) {
-                    memset(movableSend, MOV, KEYS);
-                    movableSend[i] = LCK;
+                    memset(movableSend, true, KEYS);
+                    movableSend[i] = false;
 
                     const std::unique_ptr<Snapshot> s = getLockedScore(group, movableSend, 5);
                     printf("Locked %c: [%f, %f]\n", KEYS_LOWER[i], s->best->stats.score / best, s->worst->stats.score / worst);

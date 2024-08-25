@@ -3,7 +3,6 @@
 #include <filesystem>
 
 #include <fstream>
-#include <sstream>
 #include <text.cuh>
 
 constexpr int setSize = ALIGNED / sizeof(uint64_t);
@@ -70,7 +69,7 @@ void Record::get() {
         const std::unique_ptr<Snapshot> &p = snap;
         printf("\r[%d (%d) / %d] %s, %s, %s | %.2f s/it | %.2f minutes left", i + 1, unique, rounds,
                 F3(p->best->stats.score), F3(p->average), F3(p->worst->stats.score), secondsPerIt, minutesLeft);
-        for (int r = 0; r < 35; ++r) {
+        for (int r = 0; r < 15; ++r) {
             printf(" ");
         }
 

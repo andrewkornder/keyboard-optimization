@@ -3,29 +3,12 @@
 #include <rng.cuh>
 
 
-#ifdef LOCAL_KB
-__global__ void copyRange(const pop_t size, const keyboard* population, keyboard* copyTo) {
-    const pop_t i = IDX(pop_t);
-    if (i < size) {
-        copyTo[i] = population[i];
-    }
-}
-
-#else
-#if COPYMODE == COPY_MEMCPY
-#define _COPY(size) memcpy(to, from, size)
-#elif COPYMODE == COPYMODE_BYTE
-#define _COPY(size) \
-_Pragma("unroll") \
-for (int i = 0; i < size; i++) to[i] = from[i]
-#elif COPYMODE == COPYMODE_CAST
 #define _COPY(size) \
 const auto* A = (uint64_t*) from; \
 auto* B = (uint64_t*) to; \
 constexpr int max = size / sizeof(uint64_t); \
 _Pragma("unroll") \
 for (int i = 0; i < max; i++) B[i] = A[i];
-#endif
 
 #define CFIXED(size) __device__ __forceinline__ void _copyFixed##size(const char* from, char* to) {_COPY(size);}
 #define copyFixed(from, to, size)  _copyFixed##size(from, to)
@@ -57,13 +40,8 @@ __global__ void reorder(const pop_t size, keyboard* population, char* base, cons
     copyFixed(from, to, copyStride);
     population[idx].arr = to;
 }
-#endif
 
-#ifdef LOCAL_KB
-__global__ void createNext(const pop_t n, const pop_t k, keyboard* population, const keyboard* top) {
-#else
 __global__ void createNext(const pop_t n, const pop_t k, keyboard* population, const char* top) {
-#endif
     const pop_t i = IDX(pop_t);
     if (i >= n) return;
 
@@ -130,10 +108,10 @@ __global__ void createNext(const pop_t n, const pop_t k, keyboard* population, c
         const uint32_t ij = next(rng);
 
         const int a = ij % KEYS;
-        if (movable[a] == LCK) continue;
+        if (!movable[a]) continue;
 
         const int b = (ij >> 8) % KEYS;
-        if (movable[b] == LCK) continue;
+        if (!movable[b]) continue;
 
         SWAP(out, a, b);
     }

@@ -28,10 +28,10 @@ __global__ void removeDuplicatesAIO(const pop_t n, keyboard* kbs) {
 
 #pragma unroll
             for (int j = 0; j < KEYS - 1; ++j) {
-                if (movable[j] == LCK) continue;
+                if (!movable[j]) continue;
 
                 const char k = j + next(rng) % (KEYS - j);
-                if (movable[k] == LCK) continue;
+                if (!movable[k]) continue;
 
                 SWAP(out, j, k);
             }
@@ -53,10 +53,10 @@ __global__ void removeDuplicates(const pop_t n, const keyboard* kbs) {
 
 #pragma unroll
         for (int j = 0; j < KEYS - 1; ++j) {
-            if (movable[j] == LCK) continue;
+            if (!movable[j]) continue;
 
             const char k = j + next(rng) % (KEYS - j);
-            if (movable[k] == LCK) continue;
+            if (!movable[k]) continue;
 
             SWAP(out, j, k);
         }

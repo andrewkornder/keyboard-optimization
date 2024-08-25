@@ -87,9 +87,9 @@ __global__ void randomize(const pop_t size, keyboard* group) {
 
     #pragma unroll
     for (int j = 0; j < KEYS - 1; ++j) {
-        if (movable[j] == LCK) continue;
+        if (!movable[j]) continue;
         const char k = j + next(rng) % (KEYS - j);
-        if (movable[k] == LCK) continue;
+        if (!movable[k]) continue;
         SWAP(pos, j, k);
     }
 

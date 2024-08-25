@@ -35,7 +35,6 @@ function(CREATE_ name)
 
         src/lib/def.cuh
         src/lib/choices.cuh
-        src/lib/constants.cuh
 
         src/lib/text.cu
         src/lib/text.cuh

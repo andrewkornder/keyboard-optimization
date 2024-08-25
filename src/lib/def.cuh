@@ -1,7 +1,6 @@
 #ifndef DEF_CUH
 #define DEF_CUH
 
-
 #include <choices.cuh>
 #include <string>
 
@@ -55,14 +54,7 @@ inline __device__ __constant__ bool movable[KEYS] = {};
     #error Either 'MINIMIZE' or 'MAXIMIZE' can be defined, not both
 #endif
 
-#ifdef LOCAL_KB
-#undef REARRANGE
-#endif
 
-
-#ifndef COPYMODE
-#error Must define COPYMODE to one of the three values.
-#endif
 constexpr int copyStride = ALIGNED / copyGroups;
 
 
@@ -123,5 +115,17 @@ std::string formatFileSize(const T size) {
 }
 #define F3(number) formatNumber(number).c_str()
 #define F3p(number, p) formatNumber<p>(number).c_str()
+
+#define FUNCTOR(name, ret, args, body) \
+struct name { \
+__device__ __host__ ret operator()args const noexcept body \
+}
+
+
+constexpr uint64_t THREADS_PER_BLOCK = 1024;
+
+#define LAUNCH_BOUNDS_DEFAULT __launch_bounds__(THREADS_PER_BLOCK)
+// #define CEILDIV(a, b) ((a) / (b) + ((a) % (b) != 0))
+#define SWAP(array, x_, y_) {const auto temp = array[x_]; array[x_] = array[y_]; array[y_] = temp;}
 
 #endif //DEF_CUH

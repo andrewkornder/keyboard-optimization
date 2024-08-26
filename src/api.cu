@@ -3,7 +3,6 @@
 
 #include <glob.cuh>
 #include <config.cuh>
-#include <md5.cuh>
 
 #include "test.cuh"
 #include "record.cuh"
@@ -166,7 +165,7 @@ A line can be commented out by starting it with '#'. Ending a line with a backsl
 A field can be one of the following types of values:
  1. A boolean value represented by "on" or "off".
  2. An integer represented by a series of digits (anything besides the digits 0-9 will be ignored).
- 3. A string of arbitrary text.
+ 3. A keyboard represented by 30 keys or placeholders.
  4. A path-like string (e.g. "./folder/file.txt" or "C:/folder/*.txt").
 
 Valid fields are
@@ -183,13 +182,21 @@ Valid fields are
  - `exportTables`: If provided, creates two files in this directory with the corpus and metric used.
  - `corpus` (required): A file or glob pattern to read text from. If this is a pattern, all matching files will be read
                         as text and used to train the keyboards. Otherwise, it will read the entire file.
- - `movable` (default = all movable): Which keys are allowed to be modified on the QWERTY keyboard.
-                                      this should be a list of every key which is allowed to move (e.g. "abcdef,.").
+ - `locked` (default = all movable): Which keys are allowed to be modified on the QWERTY keyboard.
  - `showOutput` (default = off): Whether to show each generated keyboard while running `evolve`.
 
-Of these 10 fields, only `corpus`, `size`, `rounds`, and `output` must be provided.
+Of these 13 fields, only `corpus`, `size`, `rounds`, and `output` must be provided.
 The fields `size` and `surviving` will both get rounded up to the nearest power of two.
 
+The format of the field `locked` is a string representation of a keyboard. This is by default 30 underscores.
+Each underscore you replace with a key will lock that key in that place for all keyboard.
+For example:
+```
+__________
+__________
+______;,./
+```
+will enforce that every keyboard has the punctuation in those four positions.
 
 USAGE
 -----

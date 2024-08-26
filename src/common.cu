@@ -78,10 +78,7 @@ __global__ void randomize(const pop_t size, keyboard* group) {
 
     state rng = hash(pos, hash(i, 0x4c9027c5c72fe3efULL, pos[0]));
 
-    #pragma unroll
-    for (int j = 0; j < KEYS; j++) {
-        pos[j] = j;
-    }
+    memcpy(pos, defaultKeyboard, sizeof(defaultKeyboard));
 
     #pragma unroll
     for (int j = 0; j < KEYS - 1; ++j) {

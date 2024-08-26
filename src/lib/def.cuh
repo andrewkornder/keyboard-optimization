@@ -42,6 +42,7 @@ constexpr uint32_t textWindow = 2;
 
 
 inline __device__ __constant__ bool movable[KEYS] = {};
+inline __device__ __constant__ char defaultKeyboard[KEYS] = {};
 
 
 #if defined(MINIMIZE) ^ defined(MAXIMIZE)

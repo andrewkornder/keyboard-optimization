@@ -6,7 +6,7 @@
 
 struct Config {
 private:
-    bool match(const std::string &key, const std::string &value);
+    void match(const std::string &key, const std::string &value);
     void parse(const char* configuration);
 
     std::set<std::string> seen{};

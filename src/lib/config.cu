@@ -137,31 +137,74 @@ Config::Config(const char* configuration) {
     }
 }
 
-bool Config::match(const std::string& key, const std::string& value) {
+bool validKeyboard(const char* keyboard) {
+    bool filled[KEYS] = {};
+    bool seen[KEYS] = {};
+
+    for (int i = 0; i < KEYS; ++i) {
+        if (const char k = keyboard[i]; 0 <= k && k < KEYS) {
+            filled[k] = true;
+            seen[i] = true;
+        }
+    }
+    for (int i = 0; i < KEYS; ++i) {
+        if (!filled[i] || !seen[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void Config::match(const std::string& key, const std::string& value) {
     if (seen.find(key) != seen.end()) {
-        printf("Field '%s' was defined more than once. The previous definition(s) will be ignored\n", key.c_str());
+        printf("Field '%s' was defined more than once. Any definition(s) after the first will be ignored\n", key.c_str());
+        return;
     }
     seen.insert(key);
-    if (key == "movable") {
-        std::set<int> lmov;
+    if (key == "locked") {
+        std::vector<int> lmov;
 
         for (const char c : value) {
-            if (const int i = letterUtils.positionOf(c); i != -1) {
-                if (lmov.find(i) != lmov.end()) {
-                    printf("Field 'movable' contains '%c' multiple times. Ignoring duplicates...\n", c);
-                }
-                lmov.insert(i);
+            if (c == '_') {
+                lmov.push_back(-1);
+            } else if (const int i = letterUtils.positionOf(c); i != -1) {
+                lmov.push_back(i);
             }
         }
-        if (lmov.size() <= KEYS) {
-            bool arr[KEYS] = {};
-            for (const int i : lmov) {
-                arr[i] = true;
+        if (lmov.size() == KEYS) {
+            bool filled[KEYS] = {};
+            bool mask[KEYS];
+            char defaultKB[KEYS];
+
+            for (int i = 0; i < KEYS; ++i) {
+                defaultKB[i] = -1;
+                mask[i] = true;
             }
-            cudaMemcpyToSymbol(movable, arr, sizeof(arr), 0, cudaMemcpyHostToDevice);
+
+            for (int i = 0; i < KEYS; ++i) {
+                if (const int letter = lmov[i]; letter != -1) {
+                    mask[letter] = false;
+                    defaultKB[letter] = i;
+                    filled[i] = true;
+                }
+            }
+
+            for (int letter = 0, pos = 0; letter < KEYS; ++letter) {
+                if (defaultKB[letter] != -1) continue;
+                while (filled[pos]) ++pos;
+                defaultKB[letter] = pos++;
+            }
+
+            if (!validKeyboard(defaultKB)) {
+                printf("Field `locked` was invalid.\n");
+                exit(1);
+            }
+
+            cudaMemcpyToSymbol(defaultKeyboard, defaultKB, sizeof(defaultKB), 0, cudaMemcpyHostToDevice);
+            cudaMemcpyToSymbol(movable, mask, sizeof(mask), 0, cudaMemcpyHostToDevice);
         } else {
             seen.extract(key);
-            printf("Movable mask is the wrong size.\nExpected: at most %d\nFound: %lld.\n", KEYS, lmov.size());
+            printf("Field `locked` is the wrong size.\nExpected: %d\nFound: %lld.\n", KEYS, lmov.size());
         }
     } else if (key == "size") {
         size.pop = 1 << ceilLog2(parseNum(value));
@@ -176,10 +219,12 @@ bool Config::match(const std::string& key, const std::string& value) {
     } else if (key == "rounds") {
         rounds = parseNum(value);
     } else if (key == "seed") {
-        if (value[0] == '0' && value[1] == 'x') {
-            SEED = parseHex(value);
-        } else {
-            SEED = parseNum(value);
+        if (value != "random") {
+            if (value[0] == '0' && value[1] == 'x') {
+                SEED = parseHex(value);
+            } else {
+                SEED = parseNum(value);
+            }
         }
     } else if (key == "output") {
         output = value;
@@ -194,9 +239,7 @@ bool Config::match(const std::string& key, const std::string& value) {
     } else {
         printf("Unknown key: '%s'\n", key.c_str());
         seen.extract(key);
-        return false;
     }
-    return true;
 }
 
 void Config::parse(const char* configuration) {

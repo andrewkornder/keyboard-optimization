@@ -204,19 +204,19 @@ bool loadCached(const std::string &path, count_t* counter) {
         return false;
     }
 
-    char start[9] = {};
-    file.read(start, 8);
+    char meta[5] = {};
+    file.read(meta, 5);
+    char chc[4] = {};
+    file.read(chc, 3);
 
-    const char bytesPerCount = start[0];
-    const char dimension = start[1];
-    const char base = start[2];
-    const char lmin_ = start[3], lmax_ = start[4];
+    if (strcmp(chc, "CHC")) return false;
+
+    const auto [bytesPerCount, dimension, base, lmin_, lmax_] = meta;
 
     if (base != loadBase) return false;
     if (lmax_ != lmax) return false;
     if (lmin_ != lmin) return false;
     if (dimension < loadDimension) return false;
-    if (strcmp(start + 5, "CHC") != 0) return false;
 
     uint64_t length = 0;
     for (int i = 0; i < sizeof(uint64_t); ++i) {

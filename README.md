@@ -46,12 +46,22 @@ Valid fields are
 - `exportTables`: If provided, creates two files in this directory with the corpus and metric used.
 - `corpus` (required): A file or glob pattern to read text from. If this is a pattern, all matching files will be read
   as text and used to train the keyboards. Otherwise, it will read the entire file.
-- `movable` (default = all movable): Which keys are allowed to be modified on the QWERTY keyboard.
-  this should be a list of every key which is allowed to move (e.g. "abcdef,.").
+- `locked` (default = 30 underscores): Which keys are allowed to be modified on the QWERTY keyboard.
 - `showOutput` (default = off): Whether to show each generated keyboard while running `evolve`.
 
-Of these fields, only `corpus`, `size`, `rounds`, and `output` must be provided.  
+Of these 13 fields, only `corpus`, `size`, `rounds`, and `output` must be provided.
 The fields `size` and `surviving` will both get rounded up to the nearest power of two.
+
+The format of the field `locked` is a string representation of a keyboard. This is by default 30 underscores.
+Each underscore you replace with a key will lock that key in that place for all keyboard.
+For example:
+```
+locked = \
+__________ \
+__________ \
+______;,./
+``` 
+will enforce that every keyboard has the punctuation keys in those four positions.
 
 USAGE
 -----

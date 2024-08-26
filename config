@@ -1,7 +1,7 @@
-movable =  \
-qwertyuiop \
-asdfghjkl; \
-zxcvbnm,./
+locked =   \
+qw________ \
+_________; \
+zxcv___,./
 
 size = 2,000,000
 survivors = 1,000
@@ -21,4 +21,5 @@ duplicates = on
 
 showOutput = on
 
-# seed = 0x78866e9d648e7309
+seed = 0x78866e9d648e7309
+seed = random

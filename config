@@ -10,7 +10,7 @@ rounds = 500
 generations = 40
 plateauLength = 2
 
-cache = .\generated\cached-bin
+cache = .\generated\cached
 
 corpus = .\resources\text\**\*.text
 
@@ -19,6 +19,6 @@ exportTables = .\generated\tables
 
 duplicates = on
 
-showOutput = off
+showOutput = on
 
 # seed = 0x78866e9d648e7309

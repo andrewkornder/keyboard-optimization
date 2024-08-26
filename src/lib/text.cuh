@@ -93,7 +93,7 @@ public:
     }
 
     template<int size, int width, typename T>
-    constexpr static uint64_t getIndexAtChars(T out[size]) {
+    constexpr static uint64_t getIndexAtChars(const T out[size]) {
         uint64_t x = 0;
         for (int j = 0; j < size; ++j) {
             x = (width + 1) * x + (1 + out[j]);
@@ -147,7 +147,7 @@ struct FinishedText {
     text_t *cpuArray, *gpuArray;
 };
 
-std::unique_ptr<FinishedText> initText(std::vector<std::filesystem::path> &corpora);
+std::unique_ptr<FinishedText> initText(const std::filesystem::path &exportTo, std::vector<std::filesystem::path> &corpora);
 
 __host__ __device__ void printArr(const char* arr);
 __host__ void printArrQ(const char* arr);

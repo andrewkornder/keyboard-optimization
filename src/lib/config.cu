@@ -118,49 +118,22 @@ Config::Config(const char* configuration) {
         create_directory(cacheDirectory);
     }
 
-    const std::shared_ptr text = initText(corpora);
+    if (!exportTables.empty() && !is_directory(exportTables)) {
+        printf("Creating directory to export tables to...");
+        create_directory(exportTables);
+    }
+
+    const std::shared_ptr text = initText(exportTables / "text.chc", corpora);
     const mtype* metric = precomputeMetric(text);
 
     if (!exportTables.empty()) {
-        if (!is_directory(exportTables)) {
-            printf("Creating directory to export tables to...");
-            create_directory(exportTables);
-        }
-
-        {
-            std::ofstream file(exportTables / "text.chc");
-
-            const text_t* array = text->cpuArray;
-
-            std::vector<uint64_t> values;
-            values.reserve(FinishedText::N);
-
-            for (int i = 0; i < FinishedText::N; ++i) {
-                values.push_back(i);
+        std::ofstream file(exportTables / "metric.chc");
+        letterUtils.applyOnIndices<textWindow, KEYS>([&file, metric](const int index, const char keys[textWindow]) {
+            for (int i = 0; i < textWindow; ++i) {
+                file << (keys[i] == -1 ? ' ' : KEYS_LOWER[keys[i]]);
             }
-
-            std::sort(values.begin(), values.end(), [array](const uint64_t a, const uint64_t b) {
-                return array[a] > array[b];
-            });
-
-            for (const uint64_t key : values) {
-                int letters[textWindow];
-                letterUtils.getCharsAtIndex<textWindow, KEYS>(key, letters);
-                for (const int q : letters) {
-                    file << (q == -1 ? ' ' : KEYS_LOWER[q]);
-                }
-                file << ": " << array[key] << '\n';
-            }
-        }
-        {
-            std::ofstream file(exportTables / "metric.chc");
-            letterUtils.applyOnIndices<textWindow, KEYS>([&file, metric](const int index, const char keys[textWindow]) {
-                for (int i = 0; i < textWindow; ++i) {
-                    file << (keys[i] == -1 ? ' ' : KEYS_LOWER[keys[i]]);
-                }
-                file << '|' << metric[index].cost << '\n';
-            });
-        }
+            file << '|' << metric[index].cost << '\n';
+        });
     }
 }
 

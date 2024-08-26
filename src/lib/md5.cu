@@ -255,7 +255,7 @@ std::string MD5::b64() {
         "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
         "abcdefghijklmnopqrstuvwxyz"
         "0123456789"
-        "+/"
+        "+-"
     };
     const auto [hi, lo] = checksum();
 

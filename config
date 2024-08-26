@@ -10,7 +10,7 @@ rounds = 500
 generations = 40
 plateauLength = 2
 
-cache = .\generated\cached
+cache = .\generated\cached-bin
 
 corpus = .\resources\text\**\*.text
 

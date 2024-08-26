@@ -11,7 +11,7 @@ constexpr uint64_t validNgrams = ipow(loadBase + 1, loadDimension);
 
 
 std::string getHashedFile(MD5 hash) {
-    const std::filesystem::path p = cacheDirectory / hash.hex();
+    const std::filesystem::path p = cacheDirectory / hash.b64();
     return p.string();
 }
 
@@ -24,6 +24,9 @@ std::string getHashedFile(const std::filesystem::path& path) {
     // hash.update(SALT);
     hash.update(path.string());
     hash.update(loadDimension);
+#ifndef CHC_TEXT
+    hash.update(0xBCCull);
+#endif
     return getHashedFile(hash);
 }
 
@@ -84,7 +87,7 @@ public:
 };
 
 
-void saveCache(const std::string &path, const count_t* counts);
+void saveCache(const std::string &path, const count_t* counts, uint64_t maximumSize);
 void loadNewText(const std::string &saveTo, const std::string &readFrom, count_t* output) {
     count_t* counter = new count_t[validNgrams]();
 
@@ -112,9 +115,8 @@ void loadNewText(const std::string &saveTo, const std::string &readFrom, count_t
         ++counter[code];
     }
 
-    // if the cache file is bigger than the actual file, just read it from file next time
-    if (!cacheDirectory.empty() && file.read > 8 * validNgrams) {
-        saveCache(saveTo, counter);
+    if (!cacheDirectory.empty()) {
+        saveCache(saveTo, counter, file.read);
     }
 
     for (int key = 0; key < validNgrams; ++key) {
@@ -124,13 +126,26 @@ void loadNewText(const std::string &saveTo, const std::string &readFrom, count_t
     delete[] counter;
 }
 
-void saveCache(const std::string &path, const count_t* counts) {
-    std::ofstream file(path);
-
+// #define CHC_TEXT
+void saveCache(const std::string &path, const count_t* counts, const uint64_t maximumSize) {
     uint64_t existing = 0;
     for (int i = 0; i < ngramCount; ++i) {
         existing += counts[i] > 0;
     }
+
+#ifdef CHC_TEXT
+    const uint64_t heuristic = (loadDimension + 6) * existing;
+#else
+    const uint64_t heuristic = (loadDimension + sizeof(count_t)) * existing;
+#endif
+    if (heuristic > maximumSize) return;
+
+#ifdef CHC_TEXT
+    constexpr std::ofstream::openmode openmode = std::ofstream::out;
+#else
+    constexpr std::ofstream::openmode openmode = std::ofstream::binary;
+#endif
+    std::ofstream file(path, openmode);
 
     std::vector<uint64_t> values;
     values.reserve(existing);
@@ -148,31 +163,47 @@ void saveCache(const std::string &path, const count_t* counts) {
     for (const uint64_t key : values) {
         int letters[loadDimension];
         letterUtils.getCharsAtIndex<loadDimension, loadBase>(key, letters);
-        for (const int c : letters) {
-            file << (char) (c + lmin);
-        }
-        file << '|';
+#ifdef CHC_TEXT
+        // for (const int c : letters) {
+        //     file << (char) (c + lmin);
+        // }
+        // file << '|';
 
-        bool first = true;
+        // bool first = true;
+        // for (const int q : letters) {
+        //     if (!first) file << ',';
+        //     first = false;
+        //     file << (1 + q);
+        // }
+        // file << '|' << counts[key] << '\n';
+#else
         for (const int q : letters) {
-            if (!first) file << ',';
-            first = false;
-            file << (1 + q);
+            file << (char) (1 + q);
         }
-        file << '|' << counts[key] << '\n';
+        const char* cnt = (char*) &counts[key];
+        for (int i = 0; i < sizeof(count_t); ++i) {
+            file << cnt[i];
+        }
+#endif
     }
 }
 
 bool loadCached(const std::string &path, count_t* counter) {
     if (cacheDirectory.empty()) return false;
 
-    std::ifstream file(path);
+#ifdef CHC_TEXT
+    constexpr std::ofstream::openmode openmode = std::ofstream::in;
+#else
+    constexpr std::ofstream::openmode openmode = std::ofstream::binary;
+#endif
+
+    std::ifstream file(path, openmode);
     if (!file.is_open()) {
         return false;
     }
 
-
     while (!file.eof()) {
+#ifdef CHC_TEXT
         char line[64] = {};
         file.get(line, 64, '\n');
         file.get();
@@ -194,6 +225,17 @@ bool loadCached(const std::string &path, count_t* counter) {
         }
         const uint64_t code = letterUtils.getIndexAtChars<loadDimension, loadBase>(cp);
         counter[code] += cp[loadDimension];
+#else
+        char cp[loadDimension];
+        file.read(cp, loadDimension);
+        count_t cnt;
+        file.read((char*) &cnt, sizeof(count_t));
+        for (int i = 0; i < loadDimension; ++i) {
+            cp[i] -= 1;
+        }
+        const uint64_t code = letterUtils.getIndexAtChars<loadDimension, loadBase>(cp);
+        counter[code] += cnt;
+#endif
     }
     return true;
 }
@@ -208,7 +250,13 @@ std::unique_ptr<FinishedText> initText(std::vector<std::filesystem::path> &corpo
     for (int i = 0; i < corpora.size(); ++i) {
         corpora[i] = canonical(corpora[i]);
     }
-    std::sort(corpora.begin(), corpora.end());
+    std::sort(corpora.begin(), corpora.end(), [](const std::filesystem::path &a, const std::filesystem::path &b) {
+        const std::string &p = a.string(), &q = b.string();
+        if (p.size() != q.size()) {
+            return p.size() > q.size();
+        }
+        return p > q;
+    });
 
     if (const std::string totalCache = getHashedFile(corpora) + ".sum"; !loadCached(totalCache, counts)) {
         for (auto &path : corpora) {
@@ -233,7 +281,7 @@ std::unique_ptr<FinishedText> initText(std::vector<std::filesystem::path> &corpo
             printf(" (%s/s)   \n", formatFileSize(read / (double) elapsed * CLOCKS_PER_SEC).c_str());
         }
         if (corpora.size() > 1) {
-            saveCache(totalCache, counts);
+            saveCache(totalCache, counts, bytes);
         }
     } else {
         bytes += std::filesystem::file_size(totalCache);

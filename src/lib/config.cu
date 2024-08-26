@@ -235,10 +235,16 @@ void Config::parse(const char* configuration) {
     }
 
     while (!cnf.eof()) {
-        if (const char start = cnf.get(); !isalnum(start) || start == '#') {
-            if (start != '\n') cnf.ignore(1024, '\n');
+        char first = cnf.get();
+        while (isspace(first)) {
+            first = cnf.get();
+        }
+        if (cnf.eof()) break;
+        if (first == '#') {
+            cnf.ignore(1024, '\n');
             continue;
         }
+
         cnf.seekg(-1, std::ifstream::cur);
 
         std::string key, value;

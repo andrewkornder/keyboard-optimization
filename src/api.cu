@@ -1,9 +1,10 @@
 #include <set>
 #include <filesystem>
 
-#include <metric.cuh>
 #include <glob.cuh>
 #include <config.cuh>
+#include <md5.cuh>
+
 #include "test.cuh"
 #include "record.cuh"
 #include "general.cuh"
@@ -121,15 +122,14 @@ void run(const Config &cnf, const ArgParser &args) {
                 runPerfRound(group, cnf.generations, cnf.rounds);
             } else if (mode == "rand") {
                 group.init();
-                group.scoreAndSort();
-                printf("Average score for %s randomized organisms: %s\n", F3(group.n), F3p(group.averageScore(), 4));
+                printf("Average score for %s randomized organisms: %s\n", F3(group.n), F3p(group.averageScore(), 5));
             } else if (mode == "lock") {
                 bool movableSend[KEYS] = {};
                 memset(movableSend, true, KEYS);
 
                 score_t best, worst;
                 {
-                    const std::unique_ptr<Snapshot> base = getLockedScore(group, movableSend, 30);
+                    const std::unique_ptr base = getLockedScore(group, movableSend, 30);
                     best = base->best->stats.score, worst = base->worst->stats.score;
                 }
 
@@ -137,7 +137,7 @@ void run(const Config &cnf, const ArgParser &args) {
                     memset(movableSend, true, KEYS);
                     movableSend[i] = false;
 
-                    const std::unique_ptr<Snapshot> s = getLockedScore(group, movableSend, 5);
+                    const std::unique_ptr s = getLockedScore(group, movableSend, 5);
                     printf("Locked %c: [%f, %f]\n", KEYS_LOWER[i], s->best->stats.score / best, s->worst->stats.score / worst);
                 }
             } else if (mode == "evolve") {

@@ -250,6 +250,38 @@ std::string MD5::hex() {
     return output;
 }
 
+std::string MD5::b64() {
+    constexpr char base[64 + 1] = {
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        "abcdefghijklmnopqrstuvwxyz"
+        "0123456789"
+        "+/"
+    };
+    const auto [hi, lo] = checksum();
+
+    std::string output(22, '\0');
+
+
+    for (int i = 0; i < 22; ++i) {
+        const int shift = 6 * i;
+        uint64_t x = 0;
+        if (shift > 0) {
+            if (shift > 64) {
+                x |= hi >> shift - 64;
+            } else {
+                x |= hi << 64 - shift;
+            }
+        }
+        if (shift < 64) {
+            x |= lo >> shift;
+        }
+
+        output.at(21 - i) = base[x % 64];
+    }
+
+    return output;
+}
+
 MD5::Digest64 MD5::checksum() {
     Digest digest;
     checksum(digest);
@@ -258,10 +290,10 @@ MD5::Digest64 MD5::checksum() {
 
     Digest64 out;
     for (int i = 0; i < s; ++i) {
-        out.lo |= (uint64_t) digest[i] << 8 * (s - 1 - i);
+        out.hi |= (uint64_t) digest[i] << 8 * (s - 1 - i);
     }
     for (int i = 0; i < s; ++i) {
-        out.hi |= (uint64_t) digest[s + i] << 8 * (s - 1 - i);
+        out.lo |= (uint64_t) digest[s + i] << 8 * (s - 1 - i);
     }
     return out;
 }

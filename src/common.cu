@@ -66,7 +66,6 @@ __global__ void initKeyboards(const pop_t n, keyboard* pointers, char* base) {
         memset(arr, 0, ALIGNED);
 
         pointers[i].stats = {};
-
         pointers[i].rescore = true;
     }
 }
@@ -77,8 +76,7 @@ __global__ void randomize(const pop_t size, keyboard* group) {
 
     char* pos = group[i].arr;
 
-    score_t score = group[i].stats.score;
-    state rng = hash(pos, hash(i, * (state*) &score, (state) pos + (state) group + i));
+    state rng = hash(pos, hash(i, 0x4c9027c5c72fe3efULL, pos[0]));
 
     #pragma unroll
     for (int j = 0; j < KEYS; j++) {

@@ -2,7 +2,6 @@
 #include <lib/text.cuh>
 #include <common.cuh>
 #include <iostream>
-#include <map>
 #include <metric.cuh>
 #include <unordered_map>
 #include <vector>
@@ -205,40 +204,45 @@ void test(const std::string &name) {
 }
 
 void testUser() {
-    char valid[2 * KEYS + 2] = {};
-    memcpy(valid,            KEYS_LOWER, sizeof(KEYS_LOWER));
-    memcpy(valid + KEYS + 1, KEYS_UPPER, sizeof(KEYS_UPPER));
-    valid[KEYS] = '\n';
     printf("To test a keyboard, enter a string of text with exactly %d letters included in"
-           "the following string:\n%s\nTo exit the testing loop, enter \"stop\"."
-           , KEYS, valid);
+           "the following string:\n%s\n%s\nTo exit the testing loop, enter \"stop\".\n\n" , KEYS, KEYS_LOWER, KEYS_UPPER);
     while (true) {
         char keyboard[KEYS];
         int seen = 0;
 
-        printf("Enter a keyboard or \"stop\"");
+        printf("Enter a keyboard or \"stop\"\n");
         while (seen != KEYS) {
             char buffer[1024];
             std::cin.getline(buffer, 1024);
-            if (buffer == "stop") {
+            if (std::string(buffer) == "stop") {
                 printf("Exiting.\n");
                 goto exit;
             }
             for (int i = 0; buffer[i] != '\0'; ++i) {
-                if (const int pos = letterUtils.positionOf(buffer[i]); pos != -1) {
-                    if (seen < KEYS) keyboard[pos] = seen++;
+                if (letterUtils.positionOf(buffer[i]) != -1) {
+                    if (seen < KEYS) keyboard[seen++] = buffer[i];
                     else seen++;
                 }
             }
             if (seen > KEYS) {
                 printf("Too many keys found. Expected %d, found at least %d.\n", KEYS, seen);
+                break;
             }
         }
 
-        printf("Your keyboard:\n");
-        printArrQ(keyboard);
+        if (seen != KEYS) continue;
 
+        printf("Your keyboard:\n");
+        for (int i = 0; i < KEYS; ++i) {
+            printf("%c", keyboard[i]);
+            if (i % 10 == 9) printf("\n");
+        }
+        printf("\n");
+
+        TestGroup tg;
         tests.add("result", keyboard);
+        tests.test(tg, "result");
+        tg.print();
     }
     exit:
     tests.remove("result");

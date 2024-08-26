@@ -75,6 +75,7 @@ private:
 
 public:
     std::string hex();
+    std::string b64();
     Digest64 checksum();
 
 private:

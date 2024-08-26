@@ -15,18 +15,18 @@ constexpr uint64_t ceilLog2(uint64_t x) {
 }
 
 inline constexpr char KEYS_LOWER[] = {
-    // '1','2','3','4','5','6','7','8','9','0',
-    'q','w','e','r','t','y','u','i','o','p',
-    'a','s','d','f','g','h','j','k','l',';',
-    'z','x','c','v','b','n','m',',','.','/',
+    // "1234567890"
+    "qwertyuiop"
+    "asdfghjkl;"
+    "zxcvbnm,./"
 };
 inline constexpr char KEYS_UPPER[] = {
-    // '!','@','#','$','%','^','&','*','(',')',
-    'Q','W','E','R','T','Y','U','I','O','P',
-    'A','S','D','F','G','H','J','K','L',':',
-    'Z','X','C','V','B','N','M','<','>','?',
+    // "!@#$%^&*()"
+    "QWERTYUIOP"
+    "ASDFGHJKL:"
+    "ZXCVBNM<>?"
 };
-constexpr uint32_t KEYS = std::size(KEYS_LOWER);
+constexpr uint32_t KEYS = std::size(KEYS_LOWER) - 1;
 constexpr uint32_t KEYS2 = KEYS * KEYS;
 constexpr uint32_t ALIGNED = 1 << ceilLog2(KEYS);
 

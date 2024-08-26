@@ -25,7 +25,7 @@ public:
 
     void get();
 
-    Config config;
+    const Config &config;
     int generations, rounds;
 
     int unique = 0;

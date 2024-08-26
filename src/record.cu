@@ -148,6 +148,7 @@ void Record::saveToFile(const int i, const state seed, const std::unique_ptr<Sna
     std::ofstream file((config.output / std::to_string(i)).string() + ".gen", std::ofstream::out);
     const int length = generationsRan[i];
 
+    file << "Config hash: " << config.hash << '\n';
     file << "Seed: " << seed << '\n';
     file << "Round: " << i + 1 << " / " << rounds << '\n';
 

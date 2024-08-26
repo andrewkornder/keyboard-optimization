@@ -326,10 +326,6 @@ std::unique_ptr<FinishedText> initText(const std::filesystem::path &exportTo, st
 
     exportText(exportTo, counts);
 
-    const clock_t elapsed = clock() - start;
-    printf("Loaded all corpora in %s ms.", F3(elapsed));
-    printf(" (%s/s)     \n", formatFileSize(bytes / (double) elapsed * CLOCKS_PER_SEC).c_str());
-
     count_t* array = new count_t[FinishedText::N]();
 
     constexpr int skip = loadDimension - textWindow;
@@ -349,6 +345,9 @@ std::unique_ptr<FinishedText> initText(const std::filesystem::path &exportTo, st
     delete[] array;
     delete[] counts;
 
+    const clock_t elapsed = clock() - start;
+    printf("Loaded all corpora in %s ms.", F3(elapsed));
+    printf(" (%s/s)     \n", formatFileSize(bytes / (double) elapsed * CLOCKS_PER_SEC).c_str());
     return text;
 }
 

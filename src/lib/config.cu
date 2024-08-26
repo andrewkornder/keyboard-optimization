@@ -54,12 +54,22 @@ Config::Config(const char* configuration) {
         cudaMemcpyFromSymbol(mov, movable, sizeof(bool) * KEYS, 0, cudaMemcpyDeviceToHost);
         for (int i = 0; i < KEYS; ++i) {
             totalMovable += mov[i];
+            hashData << (mov[i] ? '1' : '0');
         }
+        hashData << '|';
+        char def[KEYS];
+        cudaMemcpyFromSymbol(def, defaultKeyboard, sizeof(char) * KEYS, 0, cudaMemcpyDeviceToHost);
+        for (int i = 0; i < KEYS; ++i) {
+            hashData << (int) def[i] << ',';
+        }
+        hashData << '|';
     }
 
     if (configured("size") && !configured("surviving")) {
         size.surviving = 1 << (ceilLog2(size.pop) - 1) / 2;
     }
+
+    hashData << size.surviving << ',' << size.pop << '|';
 
     if (!configured("seed")) {
         MD5 seed;
@@ -71,10 +81,12 @@ Config::Config(const char* configuration) {
         const auto [hi, lo] = seed.checksum();
         SEED = hi + lo;
     }
+    hashData << SEED << '|';
 
     uint64_t textBytes = 0;
     std::vector<std::filesystem::path> corpora;
     {
+        hashData << corpus << '|';
         for (std::filesystem::path &path : glob::rglob(corpus)) {
             if (!is_directory(path)) {
                 corpora.push_back(path);
@@ -87,8 +99,24 @@ Config::Config(const char* configuration) {
         exit(1);
     }
 
+    hashData << (int) showOutput << '|';
+    hashData << (int) population::allowDuplicates << '|';
+    hashData << output << '|';
+    hashData << cacheDirectory << '|';
+    hashData << exportTables << '|';
+    hashData << plateauLength << '|';
+    hashData << generations << '|';
+    hashData << rounds;
+    {
+        MD5 md5;
+        md5.update(hashData.str());
+        hashData.clear();
+        hash = md5.hex();
+    }
+
     sprintf(buffer,
         "Config: {"                                                  "\n"
+        "    hash:            0x%s"                                  "\n"
         "    corpus:          %s file(s) (%s)"                       "\n"
         "    movable keys:    %d / %d chars"                         "\n"
         "    population:      %s / %s"                               "\n"
@@ -100,6 +128,7 @@ Config::Config(const char* configuration) {
         "    showOutput:      %s"                                    "\n"
         "    seed:            %llu"                                  "\n"
         "}"                                                          "\n",
+        hash.c_str(),
         F3(corpora.size()), formatFileSize(textBytes).c_str(),
         totalMovable, KEYS,
         F3(size.surviving), F3(size.pop),
@@ -219,12 +248,12 @@ void Config::match(const std::string& key, const std::string& value) {
     } else if (key == "rounds") {
         rounds = parseNum(value);
     } else if (key == "seed") {
-        if (value != "random") {
-            if (value[0] == '0' && value[1] == 'x') {
-                SEED = parseHex(value);
-            } else {
-                SEED = parseNum(value);
-            }
+        if (value == "random") {
+            seen.erase(key);
+        } else if (value.size() > 2 && value[0] == '0' && value[1] == 'x') {
+            SEED = parseHex(value);
+        } else {
+            SEED = parseNum(value);
         }
     } else if (key == "output") {
         output = value;

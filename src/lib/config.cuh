@@ -3,6 +3,7 @@
 #include <common.cuh>
 #include <filesystem>
 #include <set>
+#include <sstream>
 
 struct Config {
 private:
@@ -19,6 +20,8 @@ private:
         return seen.find(key) != seen.end();
     }
 
+    std::stringstream hashData;
+
 public:
     explicit Config(const char* configuration);
 
@@ -33,6 +36,7 @@ public:
     int plateauLength = 2;
     bool showOutput = false;
     std::filesystem::path output;
+    std::string hash;
 };
 
 #endif //CONFIG_CUH

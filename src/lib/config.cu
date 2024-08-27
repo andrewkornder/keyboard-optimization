@@ -42,10 +42,15 @@ Config::Config(const char* configuration) {
         exit(1);
     }
 
-    if (configured("movable")) {
+    if (!configured("locked")) {
         bool lmov[KEYS];
         memset(lmov, true, KEYS);
         cudaMemcpyToSymbol(movable, lmov, sizeof(lmov), 0, cudaMemcpyHostToDevice);
+        char ldef[KEYS];
+        for (int i = 0; i < KEYS; ++i) {
+            ldef[i] = i;
+        }
+        cudaMemcpyToSymbol(defaultKeyboard, ldef, sizeof(ldef), 0, cudaMemcpyHostToDevice);
     }
 
     int totalMovable = 0;
